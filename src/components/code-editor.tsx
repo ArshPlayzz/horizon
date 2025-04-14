@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { basicSetup } from "codemirror"
 import { EditorState } from "@codemirror/state"
 import { javascript } from "@codemirror/lang-javascript"
@@ -14,8 +14,8 @@ import { EditorView, keymap } from "@codemirror/view"
 import { searchKeymap } from "@codemirror/search"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
+import { ScrollArea } from "./ui/scroll-area"
 
-// Motyw CodeMirror zgodny z motywem shadcn
 const shadcnTheme = EditorView.theme({
   "&": {
     height: "100%",
@@ -24,7 +24,8 @@ const shadcnTheme = EditorView.theme({
     color: "var(--foreground)"
   },
   ".cm-scroller": {
-    overflow: "auto"
+    overflow: "auto",
+    overscrollBehavior: "contain"
   },
   ".cm-content": {
     caretColor: "var(--primary)"
@@ -73,7 +74,6 @@ const shadcnTheme = EditorView.theme({
   }
 }, { dark: true });
 
-// Definicja podświetlania składni
 const shadcnHighlightStyle = HighlightStyle.define([
   { tag: t.keyword, color: "var(--primary)" },
   { tag: t.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
@@ -108,8 +108,12 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
+  const [content, setContent] = useState(initialValue);
 
-  // Funkcja do pobierania pełnej nazwy języka
+  useEffect(() => {
+    setContent(initialValue);
+  }, [initialValue]);
+
   const getLanguageLabel = (lang: string): string => {
     switch (lang) {
       case "html": return "HTML";
@@ -154,7 +158,7 @@ export function CodeEditor({
     }
 
     const state = EditorState.create({
-      doc: initialValue,
+      doc: content,
       extensions: [
         basicSetup,
         langExtension,
@@ -162,8 +166,12 @@ export function CodeEditor({
         syntaxHighlighting(shadcnHighlightStyle),
         autocompletion(),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged && onChange) {
-            onChange(update.state.doc.toString())
+          if (update.docChanged) {
+            const newContent = update.state.doc.toString();
+            setContent(newContent);
+            if (onChange) {
+              onChange(newContent);
+            }
           }
         }),
         EditorView.editable.of(!readOnly),
@@ -186,18 +194,21 @@ export function CodeEditor({
     return () => {
       view.destroy()
     }
-  }, [initialValue, onChange, language, readOnly])
+  }, [content, onChange, language, readOnly])
 
   return (
     <div className={cn("relative w-full h-full", className)}>
+      <ScrollArea className="h-full relative">
       <div 
         ref={editorRef}
-        className="w-full h-full overflow-hidden rounded-md border border-muted"
+        className="absolute inset-0 overflow-hidden rounded-md border border-muted"
         data-editor-container
+        style={{ overscrollBehavior: "contain" }}
       />
-      <div className="absolute bottom-2 right-2 px-2 py-1 text-[10px] font-mono bg-muted text-muted-foreground rounded">
+      <div className="absolute bottom-2 right-2 px-2 py-1 text-[10px] bg-muted text-muted-foreground rounded">
         {getLanguageLabel(language)}
       </div>
+      </ScrollArea>
     </div>
   )
 } 

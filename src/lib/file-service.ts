@@ -1,5 +1,6 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, readDir} from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
 
 export interface FileInfo {
   path: string;
@@ -7,8 +8,17 @@ export interface FileInfo {
   content: string;
 }
 
+export interface DirectoryItem {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children?: DirectoryItem[];
+}
+
 export class FileService {
   private currentFile: FileInfo | null = null;
+  private currentDirectory: string | null = null;
+  private directoryStructure: DirectoryItem[] | null = null;
 
   /**
    * Otwiera plik i zwraca jego zawartość
@@ -52,6 +62,98 @@ export class FileService {
   }
 
   /**
+   * Otwiera folder projektu i skanuje jego strukturę
+   */
+  async openDirectory(): Promise<DirectoryItem[] | null> {
+    try {
+      // Otwórz dialog wyboru folderu
+      const selected = await open({
+        directory: true,
+        multiple: false
+      });
+
+      // Jeśli użytkownik anulował wybór, zwróć null
+      if (!selected) {
+        return null;
+      }
+
+      const dirPath = selected as string;
+      this.currentDirectory = dirPath;
+      
+      // Skanuj strukturę folderu
+      this.directoryStructure = await this.scanDirectory(dirPath);
+      
+      return this.directoryStructure;
+    } catch (error) {
+      console.error('Błąd podczas otwierania folderu:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Rekurencyjnie skanuje strukturę folderu
+   */
+  private async scanDirectory(dirPath: string): Promise<DirectoryItem[]> {
+    try {
+      const entries = await readDir(dirPath);
+      const result: DirectoryItem[] = [];
+
+      for (const entry of entries) {
+        // Konstruujemy ścieżkę używając funkcji join, która obsługuje różne systemy operacyjne
+        const entryPath = await join(dirPath, entry.name);
+        
+        const item: DirectoryItem = {
+          name: entry.name,
+          path: entryPath,
+          isDirectory: entry.isDirectory
+        };
+
+        if (item.isDirectory) {
+          // Dla folderów rekurencyjnie skanujemy zawartość
+          item.children = await this.scanDirectory(item.path);
+        }
+
+        result.push(item);
+      }
+
+      // Sortuj - najpierw foldery, potem pliki, alfabetycznie
+      return result.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    } catch (error) {
+      console.error(`Błąd podczas skanowania folderu ${dirPath}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Otwiera plik z określonej ścieżki
+   */
+  async openFileFromPath(filePath: string): Promise<FileInfo | null> {
+    try {
+      // Odczytaj zawartość pliku
+      const content = await readTextFile(filePath);
+      
+      // Pobierz nazwę pliku z ścieżki
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+
+      // Zapisz informacje o bieżącym pliku
+      this.currentFile = {
+        path: filePath,
+        name: fileName,
+        content
+      };
+
+      return this.currentFile;
+    } catch (error) {
+      console.error('Błąd podczas otwierania pliku:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Zapisuje zawartość do bieżącego pliku lub otwiera dialog zapisu
    */
   async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | null> {
@@ -72,7 +174,7 @@ export class FileService {
           return null; // Użytkownik anulował
         }
 
-        filePath = selected;
+        filePath = selected as string;
       } else {
         // Użyj ścieżki bieżącego pliku
         filePath = this.currentFile.path;
@@ -104,4 +206,18 @@ export class FileService {
   getCurrentFile(): FileInfo | null {
     return this.currentFile;
   }
-} 
+
+  /**
+   * Zwraca strukturę bieżącego folderu
+   */
+  getCurrentDirectoryStructure(): DirectoryItem[] | null {
+    return this.directoryStructure;
+  }
+
+  /**
+   * Zwraca ścieżkę do bieżącego folderu
+   */
+  getCurrentDirectory(): string | null {
+    return this.currentDirectory;
+  }
+}

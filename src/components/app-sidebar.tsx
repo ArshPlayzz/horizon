@@ -1,12 +1,6 @@
 import * as React from "react"
-import { useState, useEffect } from "react"
-import { ChevronRight, File, Folder, FolderOpen, Save, Download, FileUp, Search, X, FileText } from "lucide-react"
-
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { useState, useEffect, useRef } from "react"
+import { ChevronRight, File, FolderOpen, Save, Download, FileUp, Search, X } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -14,11 +8,8 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
+
   SidebarRail,
-  SidebarInput,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,32 +38,55 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchResults, setSearchResults] = useState<DirectoryItem[]>([]);
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
-  const [isContentSearchMode, setIsContentSearchMode] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Funkcja do wyszukiwania plików
-  const handleSearch = async (query: string) => {
+  // Zoptymalizowana funkcja do wyszukiwania plików z debounce
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
     setSearchQuery(query);
+
+    // Clear previous debounce timeout
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
     if (!query.trim()) {
       setSearchResults([]);
       setIsSearchMode(false);
       return;
     }
-    
+
     setIsSearchMode(true);
+    
+    // Debounce search to prevent excessive API calls
+    searchDebounceRef.current = setTimeout(() => {
+      performSearch(query);
+    }, 300); // 300ms debounce delay
+  };
+
+  // Separate function to perform the actual search
+  const performSearch = async (query: string) => {
+    if (!query.trim()) return;
+    
     setIsSearching(true);
     
     try {
-      let results: DirectoryItem[] = [];
+      // Przeszukaj zarówno nazwy plików jak i zawartość
+      const fileNameResults = await searchFiles(query);
+      const contentResults = await searchFileContents(query);
       
-      // Przeszukaj pliki po nazwie lub zawartości w zależności od trybu
-      if (isContentSearchMode) {
-        results = await searchFileContents(query);
-      } else {
-        results = await searchFiles(query);
-      }
+      // Łączymy wyniki i usuwamy duplikaty
+      const combinedResults = [...fileNameResults];
       
-      setSearchResults(results);
+      // Dodaj wyniki z przeszukiwania zawartości, jeśli nie są już w wynikach z nazw plików
+      contentResults.forEach(contentItem => {
+        if (!combinedResults.some(item => item.path === contentItem.path)) {
+          combinedResults.push(contentItem);
+        }
+      });
+      
+      setSearchResults(combinedResults);
     } catch (error) {
       console.error("Błąd podczas wyszukiwania:", error);
     } finally {
@@ -80,23 +94,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
   };
 
-  // Efekt wyzwalający wyszukiwanie po zmianie trybu wyszukiwania
+  // Cancel any pending search when component unmounts
   useEffect(() => {
-    if (searchQuery.trim()) {
-      handleSearch(searchQuery);
-    }
-  }, [isContentSearchMode]);
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Wyczyść wyszukiwanie
   const clearSearch = () => {
     setSearchQuery("");
     setSearchResults([]);
     setIsSearchMode(false);
-  };
-
-  // Przełącz między wyszukiwaniem po nazwie i zawartości
-  const toggleSearchMode = () => {
-    setIsContentSearchMode(prev => !prev);
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
   };
 
   const handleOpenFile = async () => {
@@ -136,23 +150,24 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarContent>
-        <ScrollArea className="absolute inset-0">
-          <SidebarGroup>
-            <div className="flex flex-row justify-between p-1 gap-1">
+      <SidebarContent className="relative w-full h-full">
+          <SidebarGroup className="w-full overflow-hidden">
+            <div className="flex flex-row justify-start p-1 gap-2 w-full max-w-[18rem]">
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="icon" 
                 onClick={handleOpenFile}
                 title="Open File"
+                className="shrink-0"
               >
                 <FileUp className="h-4 w-4" />
               </Button>
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="icon" 
                 onClick={handleOpenDirectory}
                 title="Open Directory"
+                className="shrink-0"
               >
                 <FolderOpen className="h-4 w-4" />
               </Button>
@@ -160,10 +175,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
-                      variant="ghost" 
+                      variant="outline" 
                       size="icon" 
                       onClick={handleSaveFile}
                       disabled={!currentFile}
+                      className="shrink-0"
                     >
                       <Save className="h-4 w-4" />
                     </Button>
@@ -177,10 +193,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
-                      variant="ghost" 
+                      variant="outline" 
                       size="icon" 
                       onClick={handleSaveAsFile}
                       disabled={!currentFile}
+                      className="shrink-0"
                     >
                       <Download className="h-4 w-4" />
                     </Button>
@@ -193,44 +210,27 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </div>
             
             {/* Pole wyszukiwania */}
-            <div className="px-2 py-2">
-              <div className="relative">
+            <div className="px-2 py-2 flex max-w-[18rem]">
+              <div className="relative flex-1">
+                <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                </div>
                 <Input
-                  placeholder={isContentSearchMode ? "Search in content..." : "Search files..."}
+                  className="pl-8 pr-8 text-sm" 
+                  placeholder="Search files and content..."
                   value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="pr-16 h-8 text-sm"
+                  onChange={handleSearchInputChange}
                 />
-                <div className="absolute right-0 top-0 flex h-8">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={toggleSearchMode}
-                        >
-                          {isContentSearchMode ? <FileText className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isContentSearchMode ? "Szukaj po nazwie pliku" : "Szukaj w zawartości plików"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  
-                  {searchQuery && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
+                {searchQuery && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button 
+                      className="flex items-center justify-center" 
                       onClick={clearSearch}
                     >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+                      <X className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -239,14 +239,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 ? `Results (${searchResults.length})` 
                 : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')}
             </SidebarGroupLabel>
-            <SidebarGroupContent>
+            <SidebarGroupContent className="relative overflow-hidden h-full">
+            <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
+
               <SidebarMenu>
                 {directoryStructure ? (
                   isSearchMode ? (
                     // Pokazujemy wyniki wyszukiwania
                     isSearching ? (
                       <div className="px-2 py-4 text-center text-muted-foreground">
-                        <p className="text-sm">Wyszukiwanie...</p>
+                        <p className="text-sm">Searching...</p>
                       </div>
                     ) : searchResults.length > 0 ? (
                       searchResults.map((item, index) => (
@@ -259,7 +261,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       ))
                     ) : (
                       <div className="px-2 py-4 text-center text-muted-foreground">
-                        <p className="text-sm">Brak wyników dla "{searchQuery}"</p>
+                        <p className="text-sm">No results for"{searchQuery}"</p>
                       </div>
                     )
                   ) : (
@@ -281,9 +283,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </div>
                 )}
               </SidebarMenu>
+              </ScrollArea>
             </SidebarGroupContent>
           </SidebarGroup>
-        </ScrollArea>
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
@@ -296,54 +298,65 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   onFileClick: (path: string) => void,
   activeFilePath: string | null
 }) {
-  const isActive = activeFilePath === item.path;
-
-  if (!item.isDirectory) {
-    console.log(`DirectoryTree: Renderowanie pliku: ${item.name}, ścieżka: ${item.path}, aktywny: ${isActive}`);
-    
-    const handleClick = () => {
-      console.log(`DirectoryTree: Kliknięto w plik: ${item.name}, ścieżka: ${item.path}`);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { loadDirectoryContents } = useFileContext();
+  
+  const handleClick = () => {
+    if (item.isDirectory) {
+      setIsExpanded(!isExpanded);
+      
+      // If directory needs loading and is being expanded, load contents
+      if (item.needsLoading && !isExpanded) {
+        loadDirectoryContents(item.path, item);
+      }
+    } else {
       onFileClick(item.path);
-    };
-    
-    return (
-      <SidebarMenuButton
-        onClick={handleClick}
-        isActive={isActive}
-        className="data-[active=true]:bg-accent"
-      >
-        <File className="shrink-0" />
-        <span className="truncate overflow-hidden min-w-0 flex-1">{item.name}</span>
-      </SidebarMenuButton>
-    )
-  }
-
+    }
+  };
+  
+  // Check if this file is currently active
+  const isActive = activeFilePath === item.path;
+  
   return (
-    <SidebarMenuItem>
-      <Collapsible
-        className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
-        defaultOpen={false}
+    <div className="pl-1 max-w-[18rem]">
+      <div 
+        className={`flex flex-row items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isActive ? 'bg-muted' : ''}`}
+        onClick={handleClick}
       >
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton>
-            <ChevronRight className="transition-transform shrink-0" />
-            <Folder className="shrink-0" />
-            <span className="truncate overflow-hidden min-w-0 flex-1">{item.name}</span>
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <SidebarMenuSub>
-            {item.children && item.children.map((subItem, index) => (
+        {item.isDirectory ? (
+          <ChevronRight 
+            className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+          />
+        ) : (
+          <File className="h-4 w-4 text-muted-foreground" />
+        )}
+        <span className="truncate text-sm">{item.name}</span>
+      </div>
+      
+      {item.isDirectory && isExpanded && item.children && (
+        <div className="pl-3">
+          {item.children.length > 0 ? (
+            item.children.map((child) => (
               <DirectoryTree 
-                key={index} 
-                item={subItem} 
+                key={child.path} 
+                item={child} 
                 onFileClick={onFileClick}
-                activeFilePath={activeFilePath} 
+                activeFilePath={activeFilePath}
               />
-            ))}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </Collapsible>
-    </SidebarMenuItem>
-  )
+            ))
+          ) : (
+            item.needsLoading ? (
+              <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
+                Loading...
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
+                Empty directory
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

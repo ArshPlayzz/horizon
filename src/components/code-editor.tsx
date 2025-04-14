@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import { basicSetup } from "codemirror"
 import { EditorState } from "@codemirror/state"
 import { javascript } from "@codemirror/lang-javascript"
@@ -30,7 +30,7 @@ const shadcnTheme = EditorView.theme({
     height: "100%",
     fontSize: "14px",
     backgroundColor: "var(--background)",
-    color: "var(--foreground)"
+    color: "var(--muted-foreground)"
   },
   ".cm-scroller": {
     overflow: "auto",
@@ -52,7 +52,8 @@ const shadcnTheme = EditorView.theme({
   ".cm-line": {
     padding: "0 3px",
     lineHeight: "1.6",
-    fontFamily: "'Geist Mono', monospace"
+    fontFamily: "'Geist Mono', monospace",
+    color: "var(--muted-foreground)"
   },
   ".cm-activeLineGutter": {
     backgroundColor: "var(--muted)"
@@ -64,7 +65,8 @@ const shadcnTheme = EditorView.theme({
     borderRight: "1px solid var(--border)"
   },
   ".cm-gutter": {
-    minWidth: "3em"
+    minWidth: "3em",
+    opacity: 0.8
   },
   ".cm-tooltip": {
     backgroundColor: "var(--popover)",
@@ -84,20 +86,25 @@ const shadcnTheme = EditorView.theme({
 }, { dark: true });
 
 const shadcnHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: "var(--primary)" },
-  { tag: t.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
-  { tag: t.string, color: "var(--chart-4)" },
-  { tag: t.number, color: "var(--chart-3)" },
-  { tag: t.operator, color: "var(--foreground)" },
-  { tag: t.tagName, color: "var(--chart-1)" },
-  { tag: t.attributeName, color: "var(--chart-2)" },
-  { tag: t.className, color: "var(--chart-5)" },
-  { tag: t.propertyName, color: "var(--chart-2)" },
-  { tag: t.variableName, color: "var(--foreground)" },
-  { tag: t.function(t.variableName), color: "var(--chart-1)" },
-  { tag: t.typeName, color: "var(--chart-5)" },
-  { tag: t.bool, color: "var(--chart-3)" },
-  { tag: t.definition(t.variableName), color: "var(--chart-5)" },
+  { tag: t.keyword, color: "var(--primary)", opacity: 0.9 },
+  { tag: t.comment, color: "var(--muted-foreground)", fontStyle: "italic", opacity: 0.7 },
+  { tag: t.string, color: "var(--chart-4)", opacity: 0.85 },
+  { tag: t.number, color: "var(--chart-3)", opacity: 0.85 },
+  { tag: t.operator, color: "var(--muted-foreground)", opacity: 0.9 },
+  { tag: t.tagName, color: "var(--chart-1)", opacity: 0.85 },
+  { tag: t.attributeName, color: "var(--chart-2)", opacity: 0.85 },
+  { tag: t.className, color: "var(--chart-5)", opacity: 0.85 },
+  { tag: t.propertyName, color: "var(--chart-2)", opacity: 0.85 },
+  { tag: t.variableName, color: "var(--muted-foreground)", opacity: 0.9 },
+  { tag: t.function(t.variableName), color: "var(--chart-1)", opacity: 0.85 },
+  { tag: t.typeName, color: "var(--chart-5)", opacity: 0.85 },
+  { tag: t.bool, color: "var(--chart-3)", opacity: 0.85 },
+  { tag: t.definition(t.variableName), color: "var(--chart-5)", opacity: 0.85 },
+  { tag: t.punctuation, color: "var(--muted-foreground)", opacity: 0.8 },
+  { tag: t.heading, color: "var(--foreground)", fontWeight: "bold", opacity: 0.9 },
+  { tag: t.link, color: "var(--primary)", textDecoration: "underline", opacity: 0.85 },
+  { tag: t.emphasis, fontStyle: "italic", opacity: 0.85 },
+  { tag: t.strong, fontWeight: "bold", opacity: 0.85 },
 ]);
 
 export interface CodeEditorProps {
@@ -294,7 +301,7 @@ export function CodeEditor({
         data-editor-container
         style={{ overscrollBehavior: "contain" }}
       />
-      <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-md border border-primary/20 select-none">
+      <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/5 text-primary/70 rounded-md border border-primary/10 select-none opacity-80 hover:opacity-100 transition-opacity">
         {getLanguageLabel(language)}
       </div>
       </ScrollArea>

@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useRef, useEffect, useCallback, useMemo, memo } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
 import {
@@ -32,6 +32,17 @@ function AppContent() {
         isImageFile
     } = useFileContext();
     
+    // Używamy useRef do śledzenia poprzednich wartości bez powodowania renderowania
+    const prevFilePathRef = useRef<string | null>(null);
+    
+    // Redukujemy liczbę efektów generujących logi - są one źródłem problemów z wydajnością
+    useEffect(() => {
+        if (prevFilePathRef.current !== activeFilePath) {
+            console.log(`AppContent: zmiana pliku na: ${activeFilePath || 'brak'}`);
+            prevFilePathRef.current = activeFilePath;
+        }
+    }, [activeFilePath]);
+    
     // Funkcja do generowania uproszczonych breadcrumbs
     const generateBreadcrumbs = () => {
         if (!currentFile || !currentDirectory) return [];
@@ -64,21 +75,6 @@ function AppContent() {
     
     // Wygeneruj breadcrumbs
     const breadcrumbs = generateBreadcrumbs();
-    
-    // Dodajemy useEffect do logowania zmian w activeFilePath
-    React.useEffect(() => {
-        console.log(`AppContent: useEffect[activeFilePath] - ścieżka zmieniła się na: ${activeFilePath}`);
-    }, [activeFilePath]);
-    
-    // Dodajemy useEffect do logowania zmian w currentFile
-    React.useEffect(() => {
-        console.log(`AppContent: useEffect[currentFile] - plik zmienił się na: ${currentFile?.name || 'brak'}`);
-    }, [currentFile]);
-    
-    console.log(`AppContent: renderowanie, activeFilePath: ${activeFilePath}, currentFile: ${currentFile?.name || 'brak'}`);
-    if (currentFile) {
-        console.log(`AppContent: długość zawartości pliku: ${currentFile.content.length}`);
-    }
     
     // Funkcja do określania języka na podstawie rozszerzenia pliku
     const getLanguageFromExtension = (fileName: string) => {
@@ -133,44 +129,53 @@ function AppContent() {
         ? getLanguageFromExtension(currentFile.name) 
         : 'typescript';
     
-    // Obsługa zmiany zawartości edytora
-    const handleContentChange = (content: string) => {
+    // Obsługa zmiany zawartości edytora - nie powodujemy rerenderów
+    const handleContentChange = useCallback((content: string) => {
+        // Po prostu aktualizujemy zawartość bez powodowania ponownych renderowań
         updateFileContent(content);
-    };
+    }, [updateFileContent]);
 
     // Wymuszamy re-render edytora przy zmianie pliku używając klucza
-    // Używamy bardziej unikalnego klucza, uwzględniając też ścieżkę pliku
-    const editorKey = React.useMemo(() => {
+    // Używamy stabilnego klucza na bazie ścieżki pliku
+    const editorKey = useMemo(() => {
         if (!currentFile) return 'empty';
-        // Używamy tylko nazwy pliku i ostatniego czasu modyfikacji jako klucza
+        // Używamy tylko ścieżki pliku jako klucza
         return `file-${currentFile.path}`;
     }, [currentFile?.path]);
 
-    console.log(`AppContent: klucz edytora: ${editorKey}`);
-
-    // Definiuję interfejs dla MemoizedCodeEditor
+    // Definicja interfejsu MemoizedCodeEditor
     interface MemoizedCodeEditorProps {
         file: FileInfo;
         onChangeContent: (content: string) => void;
         language: string;
     }
 
-    // Opakowanie CodeEditor w React.memo, aby uniknąć zbędnych re-renderów
-    const MemoizedCodeEditor = React.memo<MemoizedCodeEditorProps>(
+    // Opakowanie CodeEditor w React.memo
+    const MemoizedCodeEditor = memo<MemoizedCodeEditorProps>(
         ({ file, onChangeContent, language }) => {
-            console.log(`MemoizedCodeEditor: renderowanie dla pliku ${file.name}`);
+            // Usuwamy zbędne logowanie
+            // console.log(`MemoizedCodeEditor: renderowanie dla pliku ${file.name}`);
+            
+            // Używamy stałej referencji do funkcji obsługującej zmiany zawartości
+            const handleChange = useCallback((content: string) => {
+                onChangeContent(content);
+            }, [onChangeContent]);
+            
             return (
                 <CodeEditor 
                     initialValue={file.content}
-                    onChange={onChangeContent}
+                    onChange={handleChange}
                     language={language}
                 />
             );
         },
         (prevProps, nextProps) => {
-            // Rerender tylko gdy zmienia się plik lub język
-            return prevProps.file.path === nextProps.file.path && 
-                   prevProps.language === nextProps.language;
+            // Rerender tylko gdy zmienia się ścieżka pliku lub język
+            // Zawartość pliku (content) celowo ignorujemy
+            return (
+                prevProps.file.path === nextProps.file.path &&
+                prevProps.language === nextProps.language
+            );
         }
     );
 
@@ -191,7 +196,7 @@ function AppContent() {
         <ThemeProvider forceDarkMode={true}>
             <SidebarProvider>
                 <AppSidebar variant="inset"/>
-                <SidebarInset className="overfloww-hidden">
+                <SidebarInset>
                     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
                         <SidebarTrigger className="-ml-1" />
                         <Separator orientation="vertical" className="mr-2 h-4" />

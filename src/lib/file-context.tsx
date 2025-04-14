@@ -1,4 +1,4 @@
-import { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import { createContext, useState, useContext, ReactNode } from 'react';
 import { FileService, FileInfo, DirectoryItem } from './file-service';
 
 // Interfejs dla kontekstu
@@ -19,6 +19,7 @@ interface FileContextType {
   searchFiles: (query: string) => Promise<DirectoryItem[]>;
   searchFileContents: (query: string) => Promise<DirectoryItem[]>;
   isImageFile: (filePath: string) => boolean;
+  loadDirectoryContents: (dirPath: string, item: DirectoryItem) => Promise<void>;
 }
 
 // Tworzymy kontekst
@@ -138,16 +139,26 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
   };
 
   const updateFileContent = (content: string) => {
-    console.log(`FileContext: updateFileContent, długość zawartości: ${content.length}`);
-    if (currentFile) {
-      console.log(`FileContext: Aktualizuję zawartość dla pliku: ${currentFile.name}`);
-      setCurrentFile({
-        ...currentFile,
-        content: content
-      });
-    } else {
-      console.log(`FileContext: Brak aktualnego pliku, nie można zaktualizować zawartości`);
+    if (!currentFile) {
+      return; // Nic nie rób jeśli nie ma pliku
     }
+    
+    // To jest kluczowa zmiana - zamiast aktualizować stan React,
+    // który powoduje ponowne renderowanie, tylko aktualizujemy
+    // referencję do zawartości pliku
+    
+    // Aktualizujemy referencję do zawartości bez wywoływania setCurrentFile
+    if (currentFile) {
+      // Tylko modyfikujemy właściwość content obiektu currentFile
+      // bez tworzenia nowego obiektu i bez aktualizacji stanu React
+      currentFile.content = content;
+    }
+    
+    // NIE wywołujemy setCurrentFile przy każdej zmianie zawartości!
+    // To powodowało problemy z utratą fokusu i resetem kursora
+    
+    // Opcjonalnie możemy ustawić flagę, że plik został zmodyfikowany
+    // ale bez wywołania pełnego re-renderowania
   };
 
   // Funkcja do wyszukiwania plików po nazwie
@@ -185,6 +196,39 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to lazily load directory contents
+  const loadDirectoryContents = async (dirPath: string, item: DirectoryItem) => {
+    try {
+      const contents = await fileService.loadDirectoryContents(dirPath);
+      
+      // Recursively update the directory structure
+      const updateDirectoryStructure = (items: DirectoryItem[] | null): DirectoryItem[] | null => {
+        if (!items) return null;
+        
+        return items.map(dirItem => {
+          if (dirItem.path === item.path) {
+            return {
+              ...dirItem,
+              children: contents,
+              needsLoading: false
+            } as DirectoryItem;
+          } else if (dirItem.isDirectory && dirItem.children) {
+            return {
+              ...dirItem,
+              children: updateDirectoryStructure(dirItem.children) || undefined
+            } as DirectoryItem;
+          }
+          return dirItem;
+        });
+      };
+      
+      // Update the directory structure state
+      setDirectoryStructure(prev => updateDirectoryStructure(prev));
+    } catch (error) {
+      console.error('Error loading directory contents:', error);
+    }
+  };
+
   // Wrapper dla metody isImageFile z FileService
   const isImageFile = (filePath: string): boolean => {
     return fileService.isImageFile(filePath);
@@ -207,7 +251,8 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     updateFileContent,
     searchFiles,
     searchFileContents,
-    isImageFile
+    isImageFile,
+    loadDirectoryContents
   };
 
   return (

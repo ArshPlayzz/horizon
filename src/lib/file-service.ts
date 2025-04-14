@@ -13,6 +13,7 @@ export interface DirectoryItem {
   path: string;
   isDirectory: boolean;
   children?: DirectoryItem[];
+  needsLoading?: boolean;
 }
 
 // Singleton pattern
@@ -22,6 +23,9 @@ export class FileService {
   private currentFile: FileInfo | null = null;
   private currentDirectory: string | null = null;
   private directoryStructure: DirectoryItem[] | null = null;
+  private fileContentIndex: Map<string, string> = new Map(); // Cache for file contents
+  private fileSearchIndex: Map<string, Set<string>> = new Map(); // Index for search terms
+  private indexingInProgress: boolean = false;
 
   constructor() {
     // Sprawdz czy juz istnieje instancja
@@ -104,8 +108,15 @@ export class FileService {
       const dirPath = selected as string;
       this.currentDirectory = dirPath;
       
+      // Clear indexes when opening a new directory
+      this.fileContentIndex.clear();
+      this.fileSearchIndex.clear();
+      
       // Skanuj strukturę folderu
       this.directoryStructure = await this.scanDirectory(dirPath);
+      
+      // Start background indexing
+      setTimeout(() => this.indexDirectoryContents(), 1000);
       
       return this.directoryStructure;
     } catch (error) {
@@ -117,10 +128,13 @@ export class FileService {
   /**
    * Rekurencyjnie skanuje strukturę folderu
    */
-  private async scanDirectory(dirPath: string): Promise<DirectoryItem[]> {
+  private async scanDirectory(dirPath: string, depth: number = 0): Promise<DirectoryItem[]> {
     try {
       const entries = await readDir(dirPath);
       const result: DirectoryItem[] = [];
+
+      // Limit recursion depth for initial loading
+      const maxInitialDepth = 2;
 
       for (const entry of entries) {
         // Konstruujemy ścieżkę używając funkcji join, która obsługuje różne systemy operacyjne
@@ -133,8 +147,14 @@ export class FileService {
         };
 
         if (item.isDirectory) {
-          // Dla folderów rekurencyjnie skanujemy zawartość
-          item.children = await this.scanDirectory(item.path);
+          // For directories, only scan children if within the initial depth limit
+          if (depth < maxInitialDepth) {
+            item.children = await this.scanDirectory(item.path, depth + 1);
+          } else {
+            // Mark directories that need lazy loading
+            item.children = [];
+            item.needsLoading = true;
+          }
         }
 
         result.push(item);
@@ -148,6 +168,18 @@ export class FileService {
       });
     } catch (error) {
       console.error(`Błąd podczas skanowania folderu ${dirPath}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Lazily loads the contents of a directory when needed
+   */
+  async loadDirectoryContents(dirPath: string): Promise<DirectoryItem[]> {
+    try {
+      return await this.scanDirectory(dirPath, 0);
+    } catch (error) {
+      console.error(`Error loading directory contents for ${dirPath}:`, error);
       return [];
     }
   }
@@ -255,6 +287,82 @@ export class FileService {
   }
 
   /**
+   * Background file indexing for faster search
+   */
+  private async indexDirectoryContents() {
+    if (this.indexingInProgress || !this.directoryStructure || !this.currentDirectory) {
+      return;
+    }
+    
+    this.indexingInProgress = true;
+    console.log('Starting background file indexing...');
+    
+    const indexableExtensions = [
+      'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'md', 'txt', 
+      'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'swift'
+    ];
+    
+    // Collect all files to index
+    const filesToIndex: string[] = [];
+    const collectFiles = (items: DirectoryItem[]) => {
+      for (const item of items) {
+        if (!item.isDirectory) {
+          const fileExt = item.name.split('.').pop()?.toLowerCase();
+          if (fileExt && indexableExtensions.includes(fileExt)) {
+            filesToIndex.push(item.path);
+          }
+        } else if (item.children) {
+          collectFiles(item.children);
+        }
+      }
+    };
+    
+    collectFiles(this.directoryStructure);
+    
+    // Index files in batches to avoid blocking the UI
+    const batchSize = 10;
+    for (let i = 0; i < filesToIndex.length; i += batchSize) {
+      const batch = filesToIndex.slice(i, i + batchSize);
+      
+      // Process each file in the batch
+      await Promise.all(batch.map(async (filePath) => {
+        try {
+          // Skip already indexed files
+          if (this.fileContentIndex.has(filePath)) {
+            return;
+          }
+          
+          const content = await readTextFile(filePath);
+          
+          // Store the content in the index
+          this.fileContentIndex.set(filePath, content);
+          
+          // Create search terms index
+          const words = content.toLowerCase().split(/\s+/);
+          const uniqueWords = new Set(words);
+          
+          // Add to the search index
+          for (const word of uniqueWords) {
+            if (word.length > 2) { // Skip very short words
+              const existingFiles = this.fileSearchIndex.get(word) || new Set();
+              existingFiles.add(filePath);
+              this.fileSearchIndex.set(word, existingFiles);
+            }
+          }
+        } catch (error) {
+          // Silent fail for indexing, just skip this file
+        }
+      }));
+      
+      // Yield to UI thread after each batch
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    
+    this.indexingInProgress = false;
+    console.log('File indexing completed!');
+  }
+
+  /**
    * Przeszukuje strukturę katalogów w poszukiwaniu plików zawierających podany tekst
    * @param query Tekst do wyszukania w treści plików
    * @param maxResults Maksymalna liczba wyników
@@ -266,13 +374,70 @@ export class FileService {
     }
     
     const results: DirectoryItem[] = [];
-    const searched: Set<string> = new Set(); // Zapobiega duplikatom
+    const searchedPaths: Set<string> = new Set(); // To avoid duplicates
     
-    // Funkcja pomocnicza do przeszukiwania zawartości pliku
+    // Prepare the search terms
+    const searchTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 1);
+    
+    // Use the index if we have it
+    if (this.fileSearchIndex.size > 0) {
+      // Find files that contain all the search terms
+      const matchingFiles: string[] = [];
+      let isFirstTerm = true;
+      let candidateFiles: Set<string> = new Set();
+      
+      for (const term of searchTerms) {
+        const filesWithTerm = this.fileSearchIndex.get(term);
+        
+        if (!filesWithTerm || filesWithTerm.size === 0) {
+          continue; // Skip terms not found in any file
+        }
+        
+        if (isFirstTerm) {
+          // For the first term, add all matching files as candidates
+          filesWithTerm.forEach(file => candidateFiles.add(file));
+          isFirstTerm = false;
+        } else {
+          // For subsequent terms, only keep files that contain all previous terms
+          candidateFiles = new Set(
+            Array.from(candidateFiles).filter(file => filesWithTerm.has(file))
+          );
+        }
+        
+        // If no candidates left, exit early
+        if (candidateFiles.size === 0) {
+          break;
+        }
+      }
+      
+      // Convert candidate files to result array
+      candidateFiles.forEach(filePath => {
+        if (matchingFiles.length < maxResults) {
+          matchingFiles.push(filePath);
+        }
+      });
+      
+      // Convert file paths to DirectoryItem objects
+      for (const filePath of matchingFiles) {
+        const item = this.findDirectoryItemByPath(filePath, this.directoryStructure);
+        if (item) {
+          results.push(item);
+        }
+      }
+      
+      return results;
+    }
+    
+    // Fallback to legacy search if index is not ready
     const searchInFile = async (filePath: string, item: DirectoryItem): Promise<boolean> => {
       try {
-        // Pomijamy pliki binarne i zbyt duże
-        // Rozszerzenia plików które warto przeszukać
+        // Skip if already searched
+        if (searchedPaths.has(filePath)) {
+          return false;
+        }
+        searchedPaths.add(filePath);
+        
+        // Filter file types
         const searchableExtensions = [
           'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'md', 'txt', 
           'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'swift'
@@ -283,44 +448,96 @@ export class FileService {
           return false;
         }
         
-        // Czytamy zawartość pliku
-        const content = await readTextFile(filePath);
-        // Sprawdzamy, czy zawartość zawiera wyszukiwane słowo
-        return content.toLowerCase().includes(query.toLowerCase());
+        // Use cached content if available
+        let content: string;
+        if (this.fileContentIndex.has(filePath)) {
+          content = this.fileContentIndex.get(filePath)!;
+        } else {
+          content = await readTextFile(filePath);
+          // Cache the content for future searches
+          this.fileContentIndex.set(filePath, content);
+        }
+        
+        // Check if file content matches the search terms
+        return searchTerms.every(term => 
+          content.toLowerCase().includes(term.toLowerCase())
+        );
       } catch (error) {
         console.error(`Błąd podczas przeszukiwania pliku ${filePath}:`, error);
         return false;
       }
     };
     
-    // Przeszukuj strukturę katalogów rekurencyjnie
+    // Faster search using batch processing
     const searchInTree = async (items: DirectoryItem[]) => {
-      for (const item of items) {
-        // Jeśli znaleźliśmy wystarczającą liczbę wyników, przerwij wyszukiwanie
+      const fileBatch: {path: string, item: DirectoryItem}[] = [];
+      
+      // Collect all files to search in batches
+      const collectFiles = (dirItems: DirectoryItem[]) => {
+        for (const item of dirItems) {
+          if (results.length >= maxResults) break;
+          
+          if (!item.isDirectory) {
+            fileBatch.push({path: item.path, item});
+          } else if (item.children) {
+            collectFiles(item.children);
+          }
+        }
+      };
+      
+      collectFiles(items);
+      
+      // Process files in batches
+      const batchSize = 20;
+      for (let i = 0; i < fileBatch.length; i += batchSize) {
         if (results.length >= maxResults) break;
         
-        // Unikaj duplikatów
-        if (searched.has(item.path)) continue;
-        searched.add(item.path);
+        const batch = fileBatch.slice(i, i + batchSize);
         
-        if (!item.isDirectory) {
-          // Sprawdź czy nazwa pliku pasuje do zapytania
-          if (item.name.toLowerCase().includes(query.toLowerCase())) {
-            results.push(item);
-          } 
-          // Sprawdź zawartość pliku
-          else if (await searchInFile(item.path, item)) {
+        // Process each file in parallel
+        const batchResults = await Promise.all(
+          batch.map(async ({path, item}) => {
+            if (await searchInFile(path, item)) {
+              return item;
+            }
+            return null;
+          })
+        );
+        
+        // Add matching files to results
+        for (const item of batchResults) {
+          if (item && results.length < maxResults) {
             results.push(item);
           }
-        } else if (item.children) {
-          // Rekurencyjnie przeszukaj poddrzewo
-          await searchInTree(item.children);
         }
+        
+        // Yield to UI thread after each batch
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     };
     
     await searchInTree(this.directoryStructure);
     return results;
+  }
+  
+  /**
+   * Find a DirectoryItem by path
+   */
+  private findDirectoryItemByPath(path: string, items: DirectoryItem[]): DirectoryItem | null {
+    for (const item of items) {
+      if (item.path === path) {
+        return item;
+      }
+      
+      if (item.isDirectory && item.children) {
+        const found = this.findDirectoryItemByPath(path, item.children);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    
+    return null;
   }
 
   /**

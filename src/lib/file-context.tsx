@@ -5,6 +5,7 @@ import { FileService, FileInfo, DirectoryItem } from './file-service';
 interface FileContextType {
   fileService: FileService;
   currentFile: FileInfo | null;
+  openFiles: FileInfo[];
   directoryStructure: DirectoryItem[] | null;
   currentDirectory: string | null;
   activeFilePath: string | null;
@@ -20,6 +21,13 @@ interface FileContextType {
   searchFileContents: (query: string) => Promise<DirectoryItem[]>;
   isImageFile: (filePath: string) => boolean;
   loadDirectoryContents: (dirPath: string, item: DirectoryItem) => Promise<void>;
+  closeFile: (filePath: string) => void;
+  switchToFile: (filePath: string) => void;
+  handleRename: (path: string) => Promise<void>;
+  handleDelete: (path: string) => Promise<void>;
+  handleCopyPath: (path: string) => Promise<void>;
+  handleCreateFile: (path: string) => Promise<void>;
+  handleCreateFolder: (path: string) => Promise<void>;
 }
 
 // Tworzymy kontekst
@@ -43,6 +51,7 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
   
   // Stany
   const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
+  const [openFiles, setOpenFiles] = useState<FileInfo[]>([]);
   const [directoryStructure, setDirectoryStructure] = useState<DirectoryItem[] | null>(null);
   const [currentDirectory, setCurrentDirectory] = useState<string | null>(null);
   const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
@@ -69,6 +78,28 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
   // Wyciągam proces aktualizacji stanu do osobnej funkcji, aby zapewnić spójność
   const updateCurrentFile = (file: FileInfo) => {
     console.log(`FileContext: updateCurrentFile, plik: ${file.name}, długość: ${file.content.length}`);
+    
+    // Sprawdź czy plik jest już otwarty
+    const existingFileIndex = openFiles.findIndex(f => f.path === file.path);
+    
+    if (existingFileIndex === -1) {
+      // Jeśli mamy już 3 pliki otwarte, zamknij najnowszy
+      if (openFiles.length >= 3) {
+        const newestFile = openFiles[openFiles.length - 1];
+        closeFile(newestFile.path);
+      }
+      
+      // Dodaj nowy plik do listy otwartych
+      setOpenFiles(prev => [...prev, file]);
+    } else {
+      // Aktualizuj istniejący plik
+      setOpenFiles(prev => {
+        const newFiles = [...prev];
+        newFiles[existingFileIndex] = file;
+        return newFiles;
+      });
+    }
+    
     setCurrentFile(file);
     setActiveFilePath(file.path);
   };
@@ -81,20 +112,38 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
       
       if (file) {
         console.log(`FileContext: Plik odczytany, aktualizuję stan`);
-        // Używam wspólnej funkcji do aktualizacji stanu
         updateCurrentFile(file);
-        
-        // Wymuszam re-render - kluczowe dla odświeżenia widoku
-        setTimeout(() => {
-          console.log(`FileContext: Sprawdzam stan po aktualizacji, currentFile:`, currentFile);
-          console.log(`FileContext: activeFilePath:`, activeFilePath);
-        }, 0);
       }
       
       return file;
     } catch (error) {
       console.error('Error opening file from path:', error);
       return null;
+    }
+  };
+
+  const closeFile = (filePath: string) => {
+    setOpenFiles(prev => prev.filter(file => file.path !== filePath));
+    
+    // Jeśli zamykamy aktualnie aktywny plik, przełącz na inny
+    if (activeFilePath === filePath) {
+      const remainingFiles = openFiles.filter(file => file.path !== filePath);
+      if (remainingFiles.length > 0) {
+        const lastFile = remainingFiles[remainingFiles.length - 1];
+        setCurrentFile(lastFile);
+        setActiveFilePath(lastFile.path);
+      } else {
+        setCurrentFile(null);
+        setActiveFilePath(null);
+      }
+    }
+  };
+
+  const switchToFile = (filePath: string) => {
+    const file = openFiles.find(f => f.path === filePath);
+    if (file) {
+      setCurrentFile(file);
+      setActiveFilePath(filePath);
     }
   };
 
@@ -234,10 +283,35 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     return fileService.isImageFile(filePath);
   };
 
+  const handleRename = async (path: string) => {
+    // TODO: Implement rename functionality
+    console.log("Rename:", path);
+  };
+
+  const handleDelete = async (path: string) => {
+    // TODO: Implement delete functionality
+    console.log("Delete:", path);
+  };
+
+  const handleCopyPath = async (path: string) => {
+    await navigator.clipboard.writeText(path);
+  };
+
+  const handleCreateFile = async (path: string) => {
+    // TODO: Implement create file functionality
+    console.log("Create file in:", path);
+  };
+
+  const handleCreateFolder = async (path: string) => {
+    // TODO: Implement create folder functionality
+    console.log("Create folder in:", path);
+  };
+
   // Wartość kontekstu
   const value = {
     fileService,
     currentFile,
+    openFiles,
     directoryStructure,
     currentDirectory,
     activeFilePath,
@@ -252,7 +326,14 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     searchFiles,
     searchFileContents,
     isImageFile,
-    loadDirectoryContents
+    loadDirectoryContents,
+    closeFile,
+    switchToFile,
+    handleRename,
+    handleDelete,
+    handleCopyPath,
+    handleCreateFile,
+    handleCreateFolder,
   };
 
   return (

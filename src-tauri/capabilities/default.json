@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
+  "identifier": "terminal-capability",
+  "description": "Capability for terminal functionality",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -15,9 +15,72 @@
     "fs:allow-mkdir",
     "fs:scope",
     "dialog:default",
+    "process:default",
+    "process:allow-exit",
+    "process:allow-restart",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "shell-terminal",
+          "cmd": "bash",
+          "args": true
+        },
+        {
+          "name": "shell-windows",
+          "cmd": "cmd",
+          "args": true
+        },
+        {
+          "name": "shell-powershell",
+          "cmd": "powershell",
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "terminal-command",
+          "cmd": "bash",
+          "args": true
+        },
+        {
+          "name": "terminal-windows",
+          "cmd": "cmd",
+          "args": true
+        },
+        {
+          "name": "terminal-powershell",
+          "cmd": "powershell",
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-stdin-write",
+      "allow": [
+        { "name": "terminal-stdin" }
+      ]
+    },
+    {
+      "identifier": "shell:allow-kill",
+      "allow": [
+        { "name": "terminal-kill" }
+      ]
+    },
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$HOME" }, { "path": "$HOME/**" }]
+      "allow": [
+        {
+          "path": "$HOME"
+        },
+        {
+          "path": "$HOME/**"
+        }
+      ]
     }
   ]
 }

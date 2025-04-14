@@ -48,7 +48,7 @@ export function ImageViewer({ src, alt = "Image", className }: ImageViewerProps)
               transform: `scale(${zoom}) rotate(${rotation}deg)`,
               transition: 'transform 0.2s ease-in-out'
             }}
-            className="max-w-full max-h-full object-contain transition-transform"
+            className="max-w-full max-h-full object-contain transition-transform rounded-lg overflow-hidden"
           />
         </div>
       </ScrollArea>

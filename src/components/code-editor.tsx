@@ -17,6 +17,9 @@ import { rust } from "@codemirror/lang-rust"
 import { cpp } from "@codemirror/lang-cpp"
 import { java } from "@codemirror/lang-java"
 import { php } from "@codemirror/lang-php"
+import { sass } from "@codemirror/lang-sass"
+import { less } from "@codemirror/lang-less"
+import { yaml } from "@codemirror/lang-yaml"
 import { indentWithTab } from "@codemirror/commands"
 import { lintKeymap } from "@codemirror/lint"
 import { EditorView, keymap } from "@codemirror/view"
@@ -110,7 +113,7 @@ const shadcnHighlightStyle = HighlightStyle.define([
 export interface CodeEditorProps {
   initialValue?: string
   onChange?: (value: string) => void
-  language?: "javascript" | "typescript" | "jsx" | "tsx" | "html" | "css" | "python" | "json" | "xml" | "markdown" | "sql" | "rust" | "cpp" | "java" | "php" | string
+  language?: "javascript" | "typescript" | "jsx" | "tsx" | "html" | "css" | "python" | "json" | "xml" | "markdown" | "sql" | "rust" | "cpp" | "java" | "php" | "sass" | "less" | "yaml" | string
   className?: string
   readOnly?: boolean
 }
@@ -126,13 +129,13 @@ export function CodeEditor({
   const editorViewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(initialValue);
   const initialized = useRef(false);
+  const lastSelectionRef = useRef<any>(null);
   
   // Aktualizujemy zawartość referencji gdy zmienia się initialValue
   useEffect(() => {
     contentRef.current = initialValue;
     
     if (editorViewRef.current && initialized.current) {
-      console.log(`CodeEditor: Aktualizacja zawartości edytora bez niszczenia, długość: ${initialValue.length}`);
       
       // Aktualizujemy bezpośrednio zawartość zamiast niszczyć i tworzyć na nowo
       const transaction = editorViewRef.current.state.update({
@@ -149,12 +152,9 @@ export function CodeEditor({
   // Inicjalizacja edytora - tylko raz przy montowaniu lub zmianie języka
   useEffect(() => {
     if (!editorRef.current) return;
-    
-    console.log(`CodeEditor: useEffect dla inicjalizacji, język: ${language}`);
-    
+        
     // Niszczymy poprzedni widok jeśli istnieje
     if (editorViewRef.current) {
-      console.log(`CodeEditor: Niszczenie widoku przy zmianie języka`);
       editorViewRef.current.destroy();
       editorViewRef.current = null;
     }
@@ -215,6 +215,17 @@ export function CodeEditor({
         langExtension = sql();
         break;
         
+      // New languages
+      case "sass":
+        langExtension = sass();
+        break;
+      case "less":
+        langExtension = less();
+        break;
+      case "yaml":
+        langExtension = yaml();
+        break;
+        
       // Default to TypeScript for unknown languages
       default:
         langExtension = javascript({ typescript: true });
@@ -236,8 +247,20 @@ export function CodeEditor({
               onChange(newContent);
             }
           }
+          // Store selection when it changes
+          if (update.selectionSet) {
+            lastSelectionRef.current = update.state.selection;
+          }
         }),
         EditorView.editable.of(!readOnly),
+        EditorView.domEventHandlers({
+          focus: (_, view) => {
+            // Restore the last selection when focus returns
+            if (lastSelectionRef.current) {
+              view.dispatch({ selection: lastSelectionRef.current });
+            }
+          }
+        }),
         keymap.of([
           ...completionKeymap,
           ...searchKeymap,
@@ -254,10 +277,8 @@ export function CodeEditor({
 
     editorViewRef.current = view;
     initialized.current = true;
-    console.log(`CodeEditor: Utworzono nowy widok edytora, język: ${language}`);
 
     return () => {
-      console.log(`CodeEditor: Czyszczenie przy usunięciu komponentu`);
       if (editorViewRef.current) {
         editorViewRef.current.destroy();
         editorViewRef.current = null;
@@ -273,6 +294,7 @@ export function CodeEditor({
       case "typescript": return "TypeScript";
       case "jsx": return "JSX";
       case "tsx": return "TypeScript JSX";
+      case "mjs": return "JavaScript Module";
       case "python": return "Python";
       case "ruby": return "Ruby";
       case "php": return "PHP";
@@ -288,23 +310,27 @@ export function CodeEditor({
       case "sql": return "SQL";
       case "shell": return "Shell";
       case "xml": return "XML";
+      case "sass": return "Sass";
+      case "less": return "Less";
       default: return lang.charAt(0).toUpperCase() + lang.slice(1);
     }
   };
 
   return (
     <div className={cn("relative w-full h-full", className)}>
-      <ScrollArea className="h-full relative">
-      <div 
-        ref={editorRef}
-        className="absolute inset-0 overflow-hidden rounded-md border border-muted"
-        data-editor-container
-        style={{ overscrollBehavior: "contain" }}
-      />
-      <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/5 text-primary/70 rounded-md border border-primary/10 select-none opacity-80 hover:opacity-100 transition-opacity">
-        {getLanguageLabel(language)}
+      <div className="absolute inset-0">
+        <ScrollArea className="absolute inset-0 w-full h-full" type="always">
+          <div 
+            ref={editorRef}
+            className="absolute inset-0"
+            data-editor-container
+            style={{ overscrollBehavior: "none" }}
+          />
+          <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/5 text-primary/70 rounded-md border border-primary/10 select-none opacity-80 hover:opacity-100 transition-opacity">
+            {getLanguageLabel(language)}
+          </div>
+        </ScrollArea>
       </div>
-      </ScrollArea>
     </div>
   )
 } 

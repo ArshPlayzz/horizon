@@ -10,6 +10,7 @@ import {
   SidebarMenu,
 
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ScrollArea } from "./ui/scroll-area"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  // Używamy kontekstu zamiast bezpośredniego dostępu do FileService
+  const { toggleSidebar } = useSidebar();
   const { 
     openFile, 
     openDirectory, 
@@ -40,6 +41,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const handleToggleSidebar = () => {
+      toggleSidebar();
+    };
+
+    document.addEventListener('toggle-sidebar', handleToggleSidebar);
+    return () => {
+      document.removeEventListener('toggle-sidebar', handleToggleSidebar);
+    };
+  }, [toggleSidebar]);
 
   // Zoptymalizowana funkcja do wyszukiwania plików z debounce
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,13 +147,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const handleFileClick = async (filePath: string) => {
     try {
-      console.log(`AppSidebar: Kliknięcie w plik: ${filePath}`);
       const file = await openFileFromPath(filePath);
-      console.log(`AppSidebar: Rezultat otwarcia pliku:`, file);
       if (file) {
-        console.log(`AppSidebar: Pomyślnie otwarto plik, długość zawartości: ${file.content.length}`);
       } else {
-        console.log(`AppSidebar: Nie udało się otworzyć pliku`);
       }
     } catch (error) {
       console.error("Error opening file:", error);

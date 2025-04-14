@@ -12,6 +12,7 @@ export interface DirectoryItem {
   name: string;
   path: string;
   isDirectory: boolean;
+  type: 'file' | 'directory';
   children?: DirectoryItem[];
   needsLoading?: boolean;
 }
@@ -143,7 +144,8 @@ export class FileService {
         const item: DirectoryItem = {
           name: entry.name,
           path: entryPath,
-          isDirectory: entry.isDirectory
+          isDirectory: entry.isDirectory,
+          type: entry.isDirectory ? 'directory' : 'file'
         };
 
         if (item.isDirectory) {

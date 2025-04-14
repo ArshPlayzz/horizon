@@ -1,97 +1,70 @@
-import React, { useRef, useEffect, useCallback, useMemo, memo } from "react"
+import { useRef, useEffect, useCallback, memo, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
 import {
-    Breadcrumb,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbList,
-    BreadcrumbPage,
-    BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
-import {
     SidebarInset,
     SidebarProvider,
-    SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { CodeEditor } from "./components/code-editor"
 import { FileContextProvider, useFileContext } from "./lib/file-context"
 import { FileInfo } from "./lib/file-service"
 import { ImageViewer } from "@/components/image-viewer"
 import { convertFileSrc } from "@tauri-apps/api/core"
+import Terminal from "./components/terminal"
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
+import { PanelBottom, PanelLeft } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { FileSelectionTabs } from "@/components/ui/file-selection-tabs"
 
-// Komponent wewnętrzny, który korzysta z kontekstu
+interface TerminalInstance {
+  id: string;
+  name: string;
+  state: {
+    output: string[];
+    currentInput: string;
+    sessionId: string | null;
+    commandHistory: string[];
+    historyIndex: number;
+    isLocked: boolean;
+  };
+  workingDirectory: string;
+  processName: string;
+}
+
 function AppContent() {
     const { 
         currentFile, 
         updateFileContent, 
-        currentDirectory, 
-        directoryStructure,
         activeFilePath,
         isImageFile
     } = useFileContext();
     
-    // Używamy useRef do śledzenia poprzednich wartości bez powodowania renderowania
     const prevFilePathRef = useRef<string | null>(null);
     
-    // Redukujemy liczbę efektów generujących logi - są one źródłem problemów z wydajnością
+    const [isTerminalVisible, setIsTerminalVisible] = useState(false);
+    const [terminalInstances, setTerminalInstances] = useState<TerminalInstance[]>([]);
+    const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+    
     useEffect(() => {
         if (prevFilePathRef.current !== activeFilePath) {
-            console.log(`AppContent: zmiana pliku na: ${activeFilePath || 'brak'}`);
             prevFilePathRef.current = activeFilePath;
         }
     }, [activeFilePath]);
     
-    // Funkcja do generowania uproszczonych breadcrumbs
-    const generateBreadcrumbs = () => {
-        if (!currentFile || !currentDirectory) return [];
-        
-        // Upewnij się, że ścieżki używają jednolitego separatora
-        const normalizedFilePath = currentFile.path.replace(/\\/g, '/');
-        const normalizedDirPath = currentDirectory.replace(/\\/g, '/');
-        
-        // Znajdź nazwę folderu głównego (ostatni segment ścieżki folderu)
-        const rootFolderName = normalizedDirPath.split('/').pop() || '';
-        
-        // Sprawdź, czy ścieżka pliku zaczyna się od ścieżki folderu
-        if (normalizedFilePath.startsWith(normalizedDirPath)) {
-            // Wyodrębnij względną ścieżkę, zaczynając od głównego folderu
-            const relativePath = normalizedFilePath.substring(normalizedDirPath.length);
-            
-            // Podziel względną ścieżkę na segmenty
-            const segments = relativePath.split('/').filter(Boolean);
-            
-            // Dodaj nazwę pliku na końcu
-            const fileName = currentFile.name;
-            
-            // Zwróć tablicę z nazwą folderu głównego + segmenty względnej ścieżki
-            return [rootFolderName, ...segments];
-        }
-        
-        // Jeśli ścieżka pliku nie zaczyna się od ścieżki folderu, użyj tylko nazwy pliku
-        return [currentFile.name];
-    };
-    
-    // Wygeneruj breadcrumbs
-    const breadcrumbs = generateBreadcrumbs();
-    
-    // Funkcja do określania języka na podstawie rozszerzenia pliku
     const getLanguageFromExtension = (fileName: string) => {
         if (!fileName || !fileName.includes('.')) return 'typescript';
         
         const ext = fileName.split('.').pop()?.toLowerCase();
         switch (ext) {
-            // Web languages
             case 'js': return 'javascript';
             case 'jsx': return 'jsx';
             case 'ts': return 'typescript';
             case 'tsx': return 'tsx';
+            case 'mjs': return 'mjs';
             case 'html': return 'html';
             case 'css': return 'css';
             case 'json': return 'json';
             
-            // Backend languages - fallback to text if no specific support
             case 'py': return 'python';
             case 'rb': return 'ruby';
             case 'php': return 'php';
@@ -104,59 +77,44 @@ function AppContent() {
             case 'cxx': return 'cpp';
             case 'cs': return 'csharp';
             
-            // Data formats
             case 'yml':
             case 'yaml': return 'yaml';
             case 'xml': return 'xml';
             case 'md': return 'markdown';
             case 'sql': return 'sql';
             
-            // Shell scripts
             case 'sh':
             case 'bash': return 'shell';
             
-            // Mobile
             case 'swift': return 'swift';
             case 'kt': return 'kotlin';
             case 'dart': return 'dart';
+            
+            case 'sass':
+            case 'scss': return 'sass';
+            case 'less': return 'less';
             
             default: return 'typescript';
         }
     };
 
-    // Określamy język na podstawie nazwy pliku
     const fileLanguage = currentFile 
         ? getLanguageFromExtension(currentFile.name) 
         : 'typescript';
     
-    // Obsługa zmiany zawartości edytora - nie powodujemy rerenderów
     const handleContentChange = useCallback((content: string) => {
-        // Po prostu aktualizujemy zawartość bez powodowania ponownych renderowań
         updateFileContent(content);
     }, [updateFileContent]);
 
-    // Wymuszamy re-render edytora przy zmianie pliku używając klucza
-    // Używamy stabilnego klucza na bazie ścieżki pliku
-    const editorKey = useMemo(() => {
-        if (!currentFile) return 'empty';
-        // Używamy tylko ścieżki pliku jako klucza
-        return `file-${currentFile.path}`;
-    }, [currentFile?.path]);
-
-    // Definicja interfejsu MemoizedCodeEditor
     interface MemoizedCodeEditorProps {
         file: FileInfo;
         onChangeContent: (content: string) => void;
         language: string;
     }
 
-    // Opakowanie CodeEditor w React.memo
     const MemoizedCodeEditor = memo<MemoizedCodeEditorProps>(
         ({ file, onChangeContent, language }) => {
-            // Usuwamy zbędne logowanie
-            // console.log(`MemoizedCodeEditor: renderowanie dla pliku ${file.name}`);
             
-            // Używamy stałej referencji do funkcji obsługującej zmiany zawartości
             const handleChange = useCallback((content: string) => {
                 onChangeContent(content);
             }, [onChangeContent]);
@@ -170,8 +128,6 @@ function AppContent() {
             );
         },
         (prevProps, nextProps) => {
-            // Rerender tylko gdy zmienia się ścieżka pliku lub język
-            // Zawartość pliku (content) celowo ignorujemy
             return (
                 prevProps.file.path === nextProps.file.path &&
                 prevProps.language === nextProps.language
@@ -179,78 +135,71 @@ function AppContent() {
         }
     );
 
-    // Sprawdzamy, czy bieżący plik jest obrazem
-    const isCurrentFileImage = currentFile && isImageFile(currentFile.path);
-
-    // Funkcja do konwersji ścieżki pliku na URL dla webview
-    const getImageSrc = (filePath: string) => {
-        try {
-            return convertFileSrc(filePath);
-        } catch (error) {
-            console.error('Error converting file path to URL:', error);
-            return `file://${filePath}`; // Fallback
-        }
-    };
-
     return (
         <ThemeProvider forceDarkMode={true}>
             <SidebarProvider>
                 <AppSidebar variant="inset"/>
-                <SidebarInset>
-                    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-                        <SidebarTrigger className="-ml-1" />
-                        <Separator orientation="vertical" className="mr-2 h-4" />
-                        <Breadcrumb>
-                            <BreadcrumbList>
-                                {currentFile ? (
-                                    <>
-                                        {/* Wyświetl uproszczone breadcrumbs */}
-                                        {breadcrumbs.map((segment, index, array) => (
-                                            index === array.length - 1 ? (
-                                                <BreadcrumbItem key={index}>
-                                                    <BreadcrumbPage>{segment}</BreadcrumbPage>
-                                                </BreadcrumbItem>
-                                            ) : (
-                                                <React.Fragment key={index}>
-                                                    <BreadcrumbItem className="hidden md:block">
-                                                        <BreadcrumbLink href="#">{segment}</BreadcrumbLink>
-                                                    </BreadcrumbItem>
-                                                    <BreadcrumbSeparator className="hidden md:block" />
-                                                </React.Fragment>
-                                            )
-                                        ))}
-                                    </>
-                                ) : (
-                                    <BreadcrumbItem>
-                                        <BreadcrumbPage>No file open</BreadcrumbPage>
-                                    </BreadcrumbItem>
-                                )}
-                            </BreadcrumbList>
-                        </Breadcrumb>
+                <SidebarInset className="overflow-hidden border-muted border rounded-lg">
+                    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-sidebar">
+                        <FileSelectionTabs />
+                        <div className="ml-auto flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => document.dispatchEvent(new CustomEvent('toggle-sidebar'))}
+                                title="Toggle Sidebar"
+                            >
+                                <PanelLeft className="h-5 w-5" />
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setIsTerminalVisible(!isTerminalVisible)}
+                                title={isTerminalVisible ? "Hide Terminal" : "Show Terminal"}
+                            >
+                                <PanelBottom className="h-5 w-5" />
+                            </Button>
+                        </div>
                     </header>
-                    <div className="flex flex-1 flex-col gap-4 p-4">
-                        {currentFile ? (
-                            <div key={editorKey} className="h-full w-full">
-                                {isCurrentFileImage ? (
-                                    // Wyświetl podgląd obrazu dla plików graficznych
-                                    <ImageViewer 
-                                        src={getImageSrc(currentFile.path)} 
-                                        alt={currentFile.name} 
-                                    />
+                    
+                    <div className="flex flex-1 flex-col">
+                        <ResizablePanelGroup direction="vertical">
+                            <ResizablePanel defaultSize={60}>
+                                {currentFile ? (
+                                    isImageFile(currentFile.path) ? (
+                                        <ImageViewer src={convertFileSrc(currentFile.path)} />
+                                    ) : (
+                                        <MemoizedCodeEditor
+                                            key={activeFilePath}
+                                            file={currentFile}
+                                            onChangeContent={handleContentChange}
+                                            language={fileLanguage}
+                                        />
+                                    )
                                 ) : (
-                                    // Wyświetl edytor kodu dla zwykłych plików
-                                    <MemoizedCodeEditor
-                                        file={currentFile}
-                                        onChangeContent={handleContentChange}
-                                        language={fileLanguage}
-                                    />
+                                    <div className="flex h-full items-center justify-center">
+                                        <p className="text-sm text-muted-foreground">
+                                            No file selected
+                                        </p>
+                                    </div>
                                 )}
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-muted-foreground">
-                                <p>Open a file to start editing</p>
-                            </div>
-                        )}
+                            </ResizablePanel>
+                            {isTerminalVisible && (
+                                <>
+                                    <ResizableHandle />
+                                    <ResizablePanel defaultSize={40}>
+                                        <Terminal
+                                            onClose={() => setIsTerminalVisible(false)}
+                                            isTerminalVisible={isTerminalVisible}
+                                            instances={terminalInstances}
+                                            setInstances={setTerminalInstances}
+                                            activeInstanceId={activeTerminalId}
+                                            setActiveInstanceId={setActiveTerminalId}
+                                        />
+                                    </ResizablePanel>
+                                </>
+                            )}
+                        </ResizablePanelGroup>
                     </div>
                 </SidebarInset>
             </SidebarProvider>
@@ -258,7 +207,10 @@ function AppContent() {
     );
 }
 
-// Główny komponent aplikacji
 export default function App() {
-    return <AppContent />;
+    return (
+        <FileContextProvider>
+            <AppContent />
+        </FileContextProvider>
+    );
 }

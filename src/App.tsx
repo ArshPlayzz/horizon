@@ -18,14 +18,18 @@ import {
 import { CodeEditor } from "./components/code-editor"
 import { FileContextProvider, useFileContext } from "./lib/file-context"
 import { FileInfo } from "./lib/file-service"
+import { ImageViewer } from "@/components/image-viewer"
+import { convertFileSrc } from "@tauri-apps/api/core"
 
 // Komponent wewnętrzny, który korzysta z kontekstu
 function AppContent() {
     const { 
         currentFile, 
         updateFileContent, 
+        currentDirectory, 
+        directoryStructure,
         activeFilePath,
-        currentDirectory
+        isImageFile
     } = useFileContext();
     
     // Funkcja do generowania uproszczonych breadcrumbs
@@ -170,11 +174,24 @@ function AppContent() {
         }
     );
 
+    // Sprawdzamy, czy bieżący plik jest obrazem
+    const isCurrentFileImage = currentFile && isImageFile(currentFile.path);
+
+    // Funkcja do konwersji ścieżki pliku na URL dla webview
+    const getImageSrc = (filePath: string) => {
+        try {
+            return convertFileSrc(filePath);
+        } catch (error) {
+            console.error('Error converting file path to URL:', error);
+            return `file://${filePath}`; // Fallback
+        }
+    };
+
     return (
         <ThemeProvider forceDarkMode={true}>
             <SidebarProvider>
                 <AppSidebar variant="inset"/>
-                <SidebarInset>
+                <SidebarInset className="overfloww-hidden">
                     <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
                         <SidebarTrigger className="-ml-1" />
                         <Separator orientation="vertical" className="mr-2 h-4" />
@@ -209,11 +226,20 @@ function AppContent() {
                     <div className="flex flex-1 flex-col gap-4 p-4">
                         {currentFile ? (
                             <div key={editorKey} className="h-full w-full">
-                                <MemoizedCodeEditor
-                                    file={currentFile}
-                                    onChangeContent={handleContentChange}
-                                    language={fileLanguage}
-                                />
+                                {isCurrentFileImage ? (
+                                    // Wyświetl podgląd obrazu dla plików graficznych
+                                    <ImageViewer 
+                                        src={getImageSrc(currentFile.path)} 
+                                        alt={currentFile.name} 
+                                    />
+                                ) : (
+                                    // Wyświetl edytor kodu dla zwykłych plików
+                                    <MemoizedCodeEditor
+                                        file={currentFile}
+                                        onChangeContent={handleContentChange}
+                                        language={fileLanguage}
+                                    />
+                                )}
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-full text-muted-foreground">

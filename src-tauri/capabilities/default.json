@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "core:image:allow-from-path",
+    "core:image:allow-size",
     "fs:read-all",
     "fs:read-files",
     "fs:write-files",

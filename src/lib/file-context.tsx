@@ -18,6 +18,7 @@ interface FileContextType {
   updateFileContent: (content: string) => void;
   searchFiles: (query: string) => Promise<DirectoryItem[]>;
   searchFileContents: (query: string) => Promise<DirectoryItem[]>;
+  isImageFile: (filePath: string) => boolean;
 }
 
 // Tworzymy kontekst
@@ -184,6 +185,11 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Wrapper dla metody isImageFile z FileService
+  const isImageFile = (filePath: string): boolean => {
+    return fileService.isImageFile(filePath);
+  };
+
   // Wartość kontekstu
   const value = {
     fileService,
@@ -200,7 +206,8 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     saveFileAs,
     updateFileContent,
     searchFiles,
-    searchFileContents
+    searchFileContents,
+    isImageFile
   };
 
   return (

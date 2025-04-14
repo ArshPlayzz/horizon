@@ -39,7 +39,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     currentDirectory,
     activeFilePath,
     searchFiles,
-    searchFileContents
+    searchFileContents,
+    currentFile
   } = useFileContext();
   
   // Stan lokalny dla wyszukiwania
@@ -107,16 +108,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   const handleSaveFile = async () => {
-    const context = useFileContext();
-    if (context.currentFile) {
-      await saveFile(context.currentFile.content);
+    if (currentFile) {
+      await saveFile(currentFile.content);
     }
   };
 
   const handleSaveAsFile = async () => {
-    const context = useFileContext();
-    if (context.currentFile) {
-      await saveFileAs(context.currentFile.content);
+    if (currentFile) {
+      await saveFileAs(currentFile.content);
     }
   };
 
@@ -157,22 +156,40 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               >
                 <FolderOpen className="h-4 w-4" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={handleSaveFile}
-                title="Save"
-              >
-                <Save className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={handleSaveAsFile}
-                title="Save As"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={handleSaveFile}
+                      disabled={!currentFile}
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {currentFile ? "Save" : "No file open to save"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={handleSaveAsFile}
+                      disabled={!currentFile}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {currentFile ? "Save As" : "No file open to save"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             
             {/* Pole wyszukiwania */}

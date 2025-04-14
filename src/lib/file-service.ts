@@ -49,6 +49,7 @@ export class FileService {
         multiple: false,
         filters: [
           { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -320,5 +321,14 @@ export class FileService {
     
     await searchInTree(this.directoryStructure);
     return results;
+  }
+
+  /**
+   * Sprawdza czy plik jest obrazem na podstawie rozszerzenia
+   */
+  isImageFile(filePath: string): boolean {
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
+    const extension = filePath.split('.').pop()?.toLowerCase() || '';
+    return imageExtensions.includes(extension);
   }
 }

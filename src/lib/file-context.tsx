@@ -16,6 +16,8 @@ interface FileContextType {
   saveFile: (content: string) => Promise<FileInfo | null>;
   saveFileAs: (content: string) => Promise<FileInfo | null>;
   updateFileContent: (content: string) => void;
+  searchFiles: (query: string) => Promise<DirectoryItem[]>;
+  searchFileContents: (query: string) => Promise<DirectoryItem[]>;
 }
 
 // Tworzymy kontekst
@@ -147,6 +149,41 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Funkcja do wyszukiwania plików po nazwie
+  const searchFiles = async (query: string): Promise<DirectoryItem[]> => {
+    if (!directoryStructure || !query.trim()) {
+      return [];
+    }
+    
+    const results: DirectoryItem[] = [];
+    const searchInTree = (items: DirectoryItem[]) => {
+      items.forEach(item => {
+        // Sprawdź, czy nazwa pliku pasuje do zapytania
+        if (item.name.toLowerCase().includes(query.toLowerCase())) {
+          results.push(item);
+        }
+        
+        // Rekurencyjnie przeszukaj poddrzewo
+        if (item.isDirectory && item.children) {
+          searchInTree(item.children);
+        }
+      });
+    };
+    
+    searchInTree(directoryStructure);
+    return results;
+  };
+  
+  // Funkcja do wyszukiwania plików po zawartości
+  const searchFileContents = async (query: string): Promise<DirectoryItem[]> => {
+    try {
+      return await fileService.searchFileContents(query);
+    } catch (error) {
+      console.error('Error searching file contents:', error);
+      return [];
+    }
+  };
+
   // Wartość kontekstu
   const value = {
     fileService,
@@ -161,7 +198,9 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     openDirectory,
     saveFile,
     saveFileAs,
-    updateFileContent
+    updateFileContent,
+    searchFiles,
+    searchFileContents
   };
 
   return (

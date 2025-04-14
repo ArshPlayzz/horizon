@@ -1,6 +1,6 @@
 import * as React from "react"
-import { useState } from "react"
-import { ChevronRight, File, Folder, FolderOpen, Save, Download, FileUp } from "lucide-react"
+import { useState, useEffect } from "react"
+import { ChevronRight, File, Folder, FolderOpen, Save, Download, FileUp, Search, X, FileText } from "lucide-react"
 
 import {
   Collapsible,
@@ -18,56 +18,13 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarRail,
+  SidebarInput,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { DirectoryItem } from "@/lib/file-service"
 import { useFileContext } from "@/lib/file-context"
-
-// Remove or comment out sample data
-/*
-const sampleData = {
-  changes: [
-    {
-      file: "README.md",
-      state: "M",
-    },
-    {
-      file: "api/hello/route.ts",
-      state: "U",
-    },
-    {
-      file: "app/layout.tsx",
-      state: "M",
-    },
-  ],
-  tree: [
-    [
-      "app",
-      [
-        "api",
-        ["hello", ["route.ts"]],
-        "page.tsx",
-        "layout.tsx",
-        ["blog", ["page.tsx"]],
-      ],
-    ],
-    [
-      "components",
-      ["ui", "button.tsx", "card.tsx"],
-      "header.tsx",
-      "footer.tsx",
-    ],
-    ["lib", ["util.ts"]],
-    ["public", "favicon.ico", "vercel.svg"],
-    ".eslintrc.json",
-    ".gitignore",
-    "next.config.js",
-    "tailwind.config.js",
-    "package.json",
-    "README.md",
-  ],
-}
-*/
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Używamy kontekstu zamiast bezpośredniego dostępu do FileService
@@ -79,8 +36,66 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     saveFileAs, 
     directoryStructure, 
     currentDirectory,
-    activeFilePath
+    activeFilePath,
+    searchFiles,
+    searchFileContents
   } = useFileContext();
+  
+  // Stan lokalny dla wyszukiwania
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [searchResults, setSearchResults] = useState<DirectoryItem[]>([]);
+  const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
+  const [isContentSearchMode, setIsContentSearchMode] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+
+  // Funkcja do wyszukiwania plików
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      setIsSearchMode(false);
+      return;
+    }
+    
+    setIsSearchMode(true);
+    setIsSearching(true);
+    
+    try {
+      let results: DirectoryItem[] = [];
+      
+      // Przeszukaj pliki po nazwie lub zawartości w zależności od trybu
+      if (isContentSearchMode) {
+        results = await searchFileContents(query);
+      } else {
+        results = await searchFiles(query);
+      }
+      
+      setSearchResults(results);
+    } catch (error) {
+      console.error("Błąd podczas wyszukiwania:", error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Efekt wyzwalający wyszukiwanie po zmianie trybu wyszukiwania
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      handleSearch(searchQuery);
+    }
+  }, [isContentSearchMode]);
+
+  // Wyczyść wyszukiwanie
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setIsSearchMode(false);
+  };
+
+  // Przełącz między wyszukiwaniem po nazwie i zawartości
+  const toggleSearchMode = () => {
+    setIsContentSearchMode(prev => !prev);
+  };
 
   const handleOpenFile = async () => {
     await openFile();
@@ -157,23 +172,90 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <Download className="h-4 w-4" />
             </Button>
           </div>
+          
+          {/* Pole wyszukiwania */}
+          <div className="px-2 py-2">
+            <div className="relative">
+              <Input
+                placeholder={isContentSearchMode ? "Search in content..." : "Search files..."}
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="pr-16 h-8 text-sm"
+              />
+              <div className="absolute right-0 top-0 flex h-8">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={toggleSearchMode}
+                      >
+                        {isContentSearchMode ? <FileText className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {isContentSearchMode ? "Szukaj po nazwie pliku" : "Szukaj w zawartości plików"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                {searchQuery && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={clearSearch}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+          
           <SidebarGroupLabel>
-            {currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files'}
+            {isSearchMode 
+              ? `Results (${searchResults.length})` 
+              : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {directoryStructure ? (
-                // Show actual directory structure when available
-                directoryStructure.map((item, index) => (
-                  <DirectoryTree 
-                    key={index} 
-                    item={item} 
-                    onFileClick={handleFileClick}
-                    activeFilePath={activeFilePath} 
-                  />
-                ))
+                isSearchMode ? (
+                  // Pokazujemy wyniki wyszukiwania
+                  isSearching ? (
+                    <div className="px-2 py-4 text-center text-muted-foreground">
+                      <p className="text-sm">Wyszukiwanie...</p>
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    searchResults.map((item, index) => (
+                      <DirectoryTree 
+                        key={`search-${index}`} 
+                        item={item} 
+                        onFileClick={handleFileClick}
+                        activeFilePath={activeFilePath} 
+                      />
+                    ))
+                  ) : (
+                    <div className="px-2 py-4 text-center text-muted-foreground">
+                      <p className="text-sm">Brak wyników dla "{searchQuery}"</p>
+                    </div>
+                  )
+                ) : (
+                  // Pokazujemy standardową strukturę katalogów
+                  directoryStructure.map((item, index) => (
+                    <DirectoryTree 
+                      key={index} 
+                      item={item} 
+                      onFileClick={handleFileClick}
+                      activeFilePath={activeFilePath} 
+                    />
+                  ))
+                )
               ) : (
-                // Instead of sample data, show a message
+                // Zamiast przykładowych danych, pokazujemy komunikat
                 <div className="px-2 py-8 text-center text-muted-foreground">
                   <p className="mb-2">No directory opened</p>
                   <p className="text-xs">Click the folder icon above to open a directory</p>

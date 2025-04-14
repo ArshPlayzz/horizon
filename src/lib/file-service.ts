@@ -252,4 +252,73 @@ export class FileService {
   getCurrentDirectory(): string | null {
     return this.currentDirectory;
   }
+
+  /**
+   * Przeszukuje strukturę katalogów w poszukiwaniu plików zawierających podany tekst
+   * @param query Tekst do wyszukania w treści plików
+   * @param maxResults Maksymalna liczba wyników
+   * @returns Tablica elementów pasujących do zapytania
+   */
+  async searchFileContents(query: string, maxResults: number = 20): Promise<DirectoryItem[]> {
+    if (!this.directoryStructure || !this.currentDirectory || !query.trim()) {
+      return [];
+    }
+    
+    const results: DirectoryItem[] = [];
+    const searched: Set<string> = new Set(); // Zapobiega duplikatom
+    
+    // Funkcja pomocnicza do przeszukiwania zawartości pliku
+    const searchInFile = async (filePath: string, item: DirectoryItem): Promise<boolean> => {
+      try {
+        // Pomijamy pliki binarne i zbyt duże
+        // Rozszerzenia plików które warto przeszukać
+        const searchableExtensions = [
+          'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'md', 'txt', 
+          'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'swift'
+        ];
+        
+        const fileExt = item.name.split('.').pop()?.toLowerCase();
+        if (!fileExt || !searchableExtensions.includes(fileExt)) {
+          return false;
+        }
+        
+        // Czytamy zawartość pliku
+        const content = await readTextFile(filePath);
+        // Sprawdzamy, czy zawartość zawiera wyszukiwane słowo
+        return content.toLowerCase().includes(query.toLowerCase());
+      } catch (error) {
+        console.error(`Błąd podczas przeszukiwania pliku ${filePath}:`, error);
+        return false;
+      }
+    };
+    
+    // Przeszukuj strukturę katalogów rekurencyjnie
+    const searchInTree = async (items: DirectoryItem[]) => {
+      for (const item of items) {
+        // Jeśli znaleźliśmy wystarczającą liczbę wyników, przerwij wyszukiwanie
+        if (results.length >= maxResults) break;
+        
+        // Unikaj duplikatów
+        if (searched.has(item.path)) continue;
+        searched.add(item.path);
+        
+        if (!item.isDirectory) {
+          // Sprawdź czy nazwa pliku pasuje do zapytania
+          if (item.name.toLowerCase().includes(query.toLowerCase())) {
+            results.push(item);
+          } 
+          // Sprawdź zawartość pliku
+          else if (await searchInFile(item.path, item)) {
+            results.push(item);
+          }
+        } else if (item.children) {
+          // Rekurencyjnie przeszukaj poddrzewo
+          await searchInTree(item.children);
+        }
+      }
+    };
+    
+    await searchInTree(this.directoryStructure);
+    return results;
+  }
 }

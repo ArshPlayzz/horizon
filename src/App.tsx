@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
 import {
@@ -16,58 +16,159 @@ import {
     SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { CodeEditor } from "./components/code-editor"
-import { FileService, FileInfo } from "./lib/file-service"
+import { FileContextProvider, useFileContext } from "./lib/file-context"
+import { FileInfo } from "./lib/file-service"
 
-// Global file service instance
-const fileService = new FileService();
-
-export default function App() {
-    const [currentFile, setCurrentFile] = useState<FileInfo | null>(null);
-    const [fileLanguage, setFileLanguage] = useState<string>("typescript");
-
-    // Handle file content changes
-    const handleContentChange = (content: string) => {
-        if (currentFile) {
-            // Update the currentFile content
-            setCurrentFile({
-                ...currentFile,
-                content: content,
-            });
+// Komponent wewnętrzny, który korzysta z kontekstu
+function AppContent() {
+    const { 
+        currentFile, 
+        updateFileContent, 
+        activeFilePath,
+        currentDirectory
+    } = useFileContext();
+    
+    // Funkcja do generowania uproszczonych breadcrumbs
+    const generateBreadcrumbs = () => {
+        if (!currentFile || !currentDirectory) return [];
+        
+        // Upewnij się, że ścieżki używają jednolitego separatora
+        const normalizedFilePath = currentFile.path.replace(/\\/g, '/');
+        const normalizedDirPath = currentDirectory.replace(/\\/g, '/');
+        
+        // Znajdź nazwę folderu głównego (ostatni segment ścieżki folderu)
+        const rootFolderName = normalizedDirPath.split('/').pop() || '';
+        
+        // Sprawdź, czy ścieżka pliku zaczyna się od ścieżki folderu
+        if (normalizedFilePath.startsWith(normalizedDirPath)) {
+            // Wyodrębnij względną ścieżkę, zaczynając od głównego folderu
+            const relativePath = normalizedFilePath.substring(normalizedDirPath.length);
+            
+            // Podziel względną ścieżkę na segmenty
+            const segments = relativePath.split('/').filter(Boolean);
+            
+            // Dodaj nazwę pliku na końcu
+            const fileName = currentFile.name;
+            
+            // Zwróć tablicę z nazwą folderu głównego + segmenty względnej ścieżki
+            return [rootFolderName, ...segments];
         }
+        
+        // Jeśli ścieżka pliku nie zaczyna się od ścieżki folderu, użyj tylko nazwy pliku
+        return [currentFile.name];
     };
-
-    // Function to get language from file extension
+    
+    // Wygeneruj breadcrumbs
+    const breadcrumbs = generateBreadcrumbs();
+    
+    // Dodajemy useEffect do logowania zmian w activeFilePath
+    React.useEffect(() => {
+        console.log(`AppContent: useEffect[activeFilePath] - ścieżka zmieniła się na: ${activeFilePath}`);
+    }, [activeFilePath]);
+    
+    // Dodajemy useEffect do logowania zmian w currentFile
+    React.useEffect(() => {
+        console.log(`AppContent: useEffect[currentFile] - plik zmienił się na: ${currentFile?.name || 'brak'}`);
+    }, [currentFile]);
+    
+    console.log(`AppContent: renderowanie, activeFilePath: ${activeFilePath}, currentFile: ${currentFile?.name || 'brak'}`);
+    if (currentFile) {
+        console.log(`AppContent: długość zawartości pliku: ${currentFile.content.length}`);
+    }
+    
+    // Funkcja do określania języka na podstawie rozszerzenia pliku
     const getLanguageFromExtension = (fileName: string) => {
+        if (!fileName || !fileName.includes('.')) return 'typescript';
+        
         const ext = fileName.split('.').pop()?.toLowerCase();
         switch (ext) {
+            // Web languages
             case 'js': return 'javascript';
             case 'jsx': return 'jsx';
             case 'ts': return 'typescript';
             case 'tsx': return 'tsx';
             case 'html': return 'html';
             case 'css': return 'css';
-            case 'json': return 'javascript';
+            case 'json': return 'json';
+            
+            // Backend languages - fallback to text if no specific support
+            case 'py': return 'python';
+            case 'rb': return 'ruby';
+            case 'php': return 'php';
+            case 'java': return 'java';
+            case 'go': return 'go';
+            case 'rs': return 'rust';
+            case 'c': return 'c';
+            case 'cpp': 
+            case 'cc':
+            case 'cxx': return 'cpp';
+            case 'cs': return 'csharp';
+            
+            // Data formats
+            case 'yml':
+            case 'yaml': return 'yaml';
+            case 'xml': return 'xml';
+            case 'md': return 'markdown';
+            case 'sql': return 'sql';
+            
+            // Shell scripts
+            case 'sh':
+            case 'bash': return 'shell';
+            
+            // Mobile
+            case 'swift': return 'swift';
+            case 'kt': return 'kotlin';
+            case 'dart': return 'dart';
+            
             default: return 'typescript';
         }
     };
 
-    // Listen for file changes from the file service
-    useEffect(() => {
-        const checkForFileChanges = () => {
-            const serviceFile = fileService.getCurrentFile();
-            if (serviceFile && (!currentFile || serviceFile.path !== currentFile.path)) {
-                setCurrentFile(serviceFile);
-                setFileLanguage(getLanguageFromExtension(serviceFile.name));
-            }
-        };
+    // Określamy język na podstawie nazwy pliku
+    const fileLanguage = currentFile 
+        ? getLanguageFromExtension(currentFile.name) 
+        : 'typescript';
+    
+    // Obsługa zmiany zawartości edytora
+    const handleContentChange = (content: string) => {
+        updateFileContent(content);
+    };
 
-        // Check immediately
-        checkForFileChanges();
+    // Wymuszamy re-render edytora przy zmianie pliku używając klucza
+    // Używamy bardziej unikalnego klucza, uwzględniając też ścieżkę pliku
+    const editorKey = React.useMemo(() => {
+        if (!currentFile) return 'empty';
+        // Używamy tylko nazwy pliku i ostatniego czasu modyfikacji jako klucza
+        return `file-${currentFile.path}`;
+    }, [currentFile?.path]);
 
-        // Set up interval to check regularly
-        const interval = setInterval(checkForFileChanges, 1000);
-        return () => clearInterval(interval);
-    }, [currentFile]);
+    console.log(`AppContent: klucz edytora: ${editorKey}`);
+
+    // Definiuję interfejs dla MemoizedCodeEditor
+    interface MemoizedCodeEditorProps {
+        file: FileInfo;
+        onChangeContent: (content: string) => void;
+        language: string;
+    }
+
+    // Opakowanie CodeEditor w React.memo, aby uniknąć zbędnych re-renderów
+    const MemoizedCodeEditor = React.memo<MemoizedCodeEditorProps>(
+        ({ file, onChangeContent, language }) => {
+            console.log(`MemoizedCodeEditor: renderowanie dla pliku ${file.name}`);
+            return (
+                <CodeEditor 
+                    initialValue={file.content}
+                    onChange={onChangeContent}
+                    language={language}
+                />
+            );
+        },
+        (prevProps, nextProps) => {
+            // Rerender tylko gdy zmienia się plik lub język
+            return prevProps.file.path === nextProps.file.path && 
+                   prevProps.language === nextProps.language;
+        }
+    );
 
     return (
         <ThemeProvider forceDarkMode={true}>
@@ -81,16 +182,16 @@ export default function App() {
                             <BreadcrumbList>
                                 {currentFile ? (
                                     <>
-                                        {/* Display path components as breadcrumbs */}
-                                        {currentFile.path.split(/[\/\\]/).filter(Boolean).map((part, index, array) => (
+                                        {/* Wyświetl uproszczone breadcrumbs */}
+                                        {breadcrumbs.map((segment, index, array) => (
                                             index === array.length - 1 ? (
                                                 <BreadcrumbItem key={index}>
-                                                    <BreadcrumbPage>{part}</BreadcrumbPage>
+                                                    <BreadcrumbPage>{segment}</BreadcrumbPage>
                                                 </BreadcrumbItem>
                                             ) : (
                                                 <React.Fragment key={index}>
                                                     <BreadcrumbItem className="hidden md:block">
-                                                        <BreadcrumbLink href="#">{part}</BreadcrumbLink>
+                                                        <BreadcrumbLink href="#">{segment}</BreadcrumbLink>
                                                     </BreadcrumbItem>
                                                     <BreadcrumbSeparator className="hidden md:block" />
                                                 </React.Fragment>
@@ -106,14 +207,27 @@ export default function App() {
                         </Breadcrumb>
                     </header>
                     <div className="flex flex-1 flex-col gap-4 p-4">
-                        <CodeEditor 
-                            initialValue={currentFile?.content || ""}
-                            onChange={handleContentChange}
-                            language={fileLanguage as any}
-                        />
+                        {currentFile ? (
+                            <div key={editorKey} className="h-full w-full">
+                                <MemoizedCodeEditor
+                                    file={currentFile}
+                                    onChangeContent={handleContentChange}
+                                    language={fileLanguage}
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-muted-foreground">
+                                <p>Open a file to start editing</p>
+                            </div>
+                        )}
                     </div>
                 </SidebarInset>
             </SidebarProvider>
         </ThemeProvider>
-    )
+    );
+}
+
+// Główny komponent aplikacji
+export default function App() {
+    return <AppContent />;
 }

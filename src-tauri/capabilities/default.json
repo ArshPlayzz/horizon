@@ -6,11 +6,11 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "fs:default",
     "fs:read-all",
     "fs:read-files",
     "fs:write-files",
     "fs:read-dirs",
+    "fs:allow-mkdir",
     "fs:scope",
     "dialog:default",
     {

@@ -8,6 +8,15 @@ import { cn } from "@/lib/utils"
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete"
 import { html } from "@codemirror/lang-html"
 import { css } from "@codemirror/lang-css"
+import { python } from "@codemirror/lang-python"
+import { json } from "@codemirror/lang-json"
+import { xml } from "@codemirror/lang-xml"
+import { markdown } from "@codemirror/lang-markdown"
+import { sql } from "@codemirror/lang-sql"
+import { rust } from "@codemirror/lang-rust"
+import { cpp } from "@codemirror/lang-cpp"
+import { java } from "@codemirror/lang-java"
+import { php } from "@codemirror/lang-php"
 import { indentWithTab } from "@codemirror/commands"
 import { lintKeymap } from "@codemirror/lint"
 import { EditorView, keymap } from "@codemirror/view"
@@ -94,7 +103,7 @@ const shadcnHighlightStyle = HighlightStyle.define([
 export interface CodeEditorProps {
   initialValue?: string
   onChange?: (value: string) => void
-  language?: "javascript" | "typescript" | "jsx" | "tsx" | "html" | "css"
+  language?: "javascript" | "typescript" | "jsx" | "tsx" | "html" | "css" | "python" | "json" | "xml" | "markdown" | "sql" | "rust" | "cpp" | "java" | "php" | string
   className?: string
   readOnly?: boolean
 }
@@ -106,59 +115,106 @@ export function CodeEditor({
   className,
   readOnly = false,
 }: CodeEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const editorViewRef = useRef<EditorView | null>(null)
-  const [content, setContent] = useState(initialValue);
-
+  const editorRef = useRef<HTMLDivElement>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const contentRef = useRef(initialValue);
+  const initialized = useRef(false);
+  
+  // Aktualizujemy zawartość referencji gdy zmienia się initialValue
   useEffect(() => {
-    setContent(initialValue);
+    contentRef.current = initialValue;
+    
+    if (editorViewRef.current && initialized.current) {
+      console.log(`CodeEditor: Aktualizacja zawartości edytora bez niszczenia, długość: ${initialValue.length}`);
+      
+      // Aktualizujemy bezpośrednio zawartość zamiast niszczyć i tworzyć na nowo
+      const transaction = editorViewRef.current.state.update({
+        changes: {
+          from: 0, 
+          to: editorViewRef.current.state.doc.length, 
+          insert: initialValue
+        }
+      });
+      editorViewRef.current.dispatch(transaction);
+    }
   }, [initialValue]);
 
-  const getLanguageLabel = (lang: string): string => {
-    switch (lang) {
-      case "html": return "HTML";
-      case "css": return "CSS";
-      case "javascript": return "JavaScript";
-      case "typescript": return "TypeScript";
-      case "jsx": return "JSX";
-      case "tsx": return "TypeScript JSX";
-      default: return "TypeScript";
-    }
-  };
-
+  // Inicjalizacja edytora - tylko raz przy montowaniu lub zmianie języka
   useEffect(() => {
-    if (!editorRef.current) return
-
+    if (!editorRef.current) return;
+    
+    console.log(`CodeEditor: useEffect dla inicjalizacji, język: ${language}`);
+    
+    // Niszczymy poprzedni widok jeśli istnieje
     if (editorViewRef.current) {
-      editorViewRef.current.destroy()
+      console.log(`CodeEditor: Niszczenie widoku przy zmianie języka`);
+      editorViewRef.current.destroy();
+      editorViewRef.current = null;
     }
 
-    let langExtension
+    let langExtension;
     switch (language) {
+      // Web languages
       case "html":
-        langExtension = html()
-        break
+        langExtension = html();
+        break;
       case "css":
-        langExtension = css()
-        break
+        langExtension = css();
+        break;
       case "javascript":
-        langExtension = javascript()
-        break
+        langExtension = javascript();
+        break;
       case "typescript":
-        langExtension = javascript({ typescript: true })
-        break
+        langExtension = javascript({ typescript: true });
+        break;
       case "jsx":
-        langExtension = javascript({ jsx: true })
-        break
+        langExtension = javascript({ jsx: true });
+        break;
       case "tsx":
-        langExtension = javascript({ jsx: true, typescript: true })
-        break
+        langExtension = javascript({ jsx: true, typescript: true });
+        break;
+      case "json":
+        langExtension = json();
+        break;
+        
+      // Backend languages
+      case "python":
+        langExtension = python();
+        break;
+      case "java":
+        langExtension = java();
+        break;
+      case "rust":
+        langExtension = rust();
+        break;
+      case "cpp":
+      case "c++":
+      case "c":
+        langExtension = cpp();
+        break;
+      case "php":
+        langExtension = php();
+        break;
+        
+      // Data formats
+      case "xml":
+        langExtension = xml();
+        break;
+      case "markdown":
+      case "md":
+        langExtension = markdown();
+        break;
+      case "sql":
+        langExtension = sql();
+        break;
+        
+      // Default to TypeScript for unknown languages
       default:
-        langExtension = javascript({ typescript: true })
+        langExtension = javascript({ typescript: true });
     }
 
     const state = EditorState.create({
-      doc: content,
+      doc: contentRef.current,
       extensions: [
         basicSetup,
         langExtension,
@@ -168,7 +224,7 @@ export function CodeEditor({
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const newContent = update.state.doc.toString();
-            setContent(newContent);
+            contentRef.current = newContent;
             if (onChange) {
               onChange(newContent);
             }
@@ -182,19 +238,52 @@ export function CodeEditor({
           indentWithTab
         ])
       ],
-    })
+    });
 
     const view = new EditorView({
       state,
       parent: editorRef.current,
-    })
+    });
 
-    editorViewRef.current = view
+    editorViewRef.current = view;
+    initialized.current = true;
+    console.log(`CodeEditor: Utworzono nowy widok edytora, język: ${language}`);
 
     return () => {
-      view.destroy()
+      console.log(`CodeEditor: Czyszczenie przy usunięciu komponentu`);
+      if (editorViewRef.current) {
+        editorViewRef.current.destroy();
+        editorViewRef.current = null;
+      }
+    };
+  }, [language, readOnly, onChange]);
+
+  const getLanguageLabel = (lang: string): string => {
+    switch (lang) {
+      case "html": return "HTML";
+      case "css": return "CSS";
+      case "javascript": return "JavaScript";
+      case "typescript": return "TypeScript";
+      case "jsx": return "JSX";
+      case "tsx": return "TypeScript JSX";
+      case "python": return "Python";
+      case "ruby": return "Ruby";
+      case "php": return "PHP";
+      case "java": return "Java";
+      case "go": return "Go";
+      case "rust": return "Rust";
+      case "c": return "C";
+      case "cpp": return "C++";
+      case "csharp": return "C#";
+      case "json": return "JSON";
+      case "yaml": return "YAML";
+      case "markdown": return "Markdown";
+      case "sql": return "SQL";
+      case "shell": return "Shell";
+      case "xml": return "XML";
+      default: return lang.charAt(0).toUpperCase() + lang.slice(1);
     }
-  }, [content, onChange, language, readOnly])
+  };
 
   return (
     <div className={cn("relative w-full h-full", className)}>
@@ -205,7 +294,7 @@ export function CodeEditor({
         data-editor-container
         style={{ overscrollBehavior: "contain" }}
       />
-      <div className="absolute bottom-2 right-2 px-2 py-1 text-[10px] bg-muted text-muted-foreground rounded">
+      <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-md border border-primary/20 select-none">
         {getLanguageLabel(language)}
       </div>
       </ScrollArea>

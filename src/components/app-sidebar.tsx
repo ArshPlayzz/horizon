@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { ChevronRight, File, Folder, FolderOpen, Save, Download, FileUp } from "lucide-react"
 
 import {
@@ -20,13 +20,11 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
-import { FileService, DirectoryItem } from "@/lib/file-service"
+import { DirectoryItem } from "@/lib/file-service"
+import { useFileContext } from "@/lib/file-context"
 
-// Get the file service instance created in App.tsx (singleton)
-// In a real app, we might want to use a context provider to share this instance
-const fileService = new FileService();
-
-// Sample data for fallback when no directory is opened
+// Remove or comment out sample data
+/*
 const sampleData = {
   changes: [
     {
@@ -69,63 +67,52 @@ const sampleData = {
     "README.md",
   ],
 }
+*/
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [directoryStructure, setDirectoryStructure] = useState<DirectoryItem[] | null>(null);
-  const [currentDirectory, setCurrentDirectory] = useState<string | null>(null);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
-
-  // Effect to keep the active file path in sync with the file service
-  useEffect(() => {
-    const checkCurrentFile = () => {
-      const currentFile = fileService.getCurrentFile();
-      if (currentFile) {
-        setActiveFilePath(currentFile.path);
-      }
-    };
-    
-    // Check on mount
-    checkCurrentFile();
-    
-    // Set up interval
-    const interval = setInterval(checkCurrentFile, 500);
-    return () => clearInterval(interval);
-  }, []);
+  // Używamy kontekstu zamiast bezpośredniego dostępu do FileService
+  const { 
+    openFile, 
+    openDirectory, 
+    openFileFromPath, 
+    saveFile, 
+    saveFileAs, 
+    directoryStructure, 
+    currentDirectory,
+    activeFilePath
+  } = useFileContext();
 
   const handleOpenFile = async () => {
-    const file = await fileService.openFile();
-    if (file) {
-      setActiveFilePath(file.path);
-    }
+    await openFile();
   };
 
   const handleOpenDirectory = async () => {
-    const dirStructure = await fileService.openDirectory();
-    if (dirStructure) {
-      setDirectoryStructure(dirStructure);
-      setCurrentDirectory(fileService.getCurrentDirectory());
-    }
+    await openDirectory();
   };
 
   const handleSaveFile = async () => {
-    const currentFile = fileService.getCurrentFile();
-    if (currentFile) {
-      await fileService.saveFile(currentFile.content);
+    const context = useFileContext();
+    if (context.currentFile) {
+      await saveFile(context.currentFile.content);
     }
   };
 
   const handleSaveAsFile = async () => {
-    const currentFile = fileService.getCurrentFile();
-    if (currentFile) {
-      await fileService.saveFile(currentFile.content, true);
+    const context = useFileContext();
+    if (context.currentFile) {
+      await saveFileAs(context.currentFile.content);
     }
   };
 
   const handleFileClick = async (filePath: string) => {
     try {
-      const file = await fileService.openFileFromPath(filePath);
+      console.log(`AppSidebar: Kliknięcie w plik: ${filePath}`);
+      const file = await openFileFromPath(filePath);
+      console.log(`AppSidebar: Rezultat otwarcia pliku:`, file);
       if (file) {
-        setActiveFilePath(file.path);
+        console.log(`AppSidebar: Pomyślnie otwarto plik, długość zawartości: ${file.content.length}`);
+      } else {
+        console.log(`AppSidebar: Nie udało się otworzyć pliku`);
       }
     } catch (error) {
       console.error("Error opening file:", error);
@@ -186,10 +173,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   />
                 ))
               ) : (
-                // Show sample data when no directory is opened
-                sampleData.tree.map((item, index) => (
-                  <Tree key={index} item={item} />
-                ))
+                // Instead of sample data, show a message
+                <div className="px-2 py-8 text-center text-muted-foreground">
+                  <p className="mb-2">No directory opened</p>
+                  <p className="text-xs">Click the folder icon above to open a directory</p>
+                </div>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -209,14 +197,21 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   const isActive = activeFilePath === item.path;
 
   if (!item.isDirectory) {
+    console.log(`DirectoryTree: Renderowanie pliku: ${item.name}, ścieżka: ${item.path}, aktywny: ${isActive}`);
+    
+    const handleClick = () => {
+      console.log(`DirectoryTree: Kliknięto w plik: ${item.name}, ścieżka: ${item.path}`);
+      onFileClick(item.path);
+    };
+    
     return (
       <SidebarMenuButton
-        onClick={() => onFileClick(item.path)}
+        onClick={handleClick}
         isActive={isActive}
         className="data-[active=true]:bg-accent"
       >
-        <File />
-        {item.name}
+        <File className="shrink-0" />
+        <span className="truncate overflow-hidden min-w-0 flex-1">{item.name}</span>
       </SidebarMenuButton>
     )
   }
@@ -229,9 +224,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
       >
         <CollapsibleTrigger asChild>
           <SidebarMenuButton>
-            <ChevronRight className="transition-transform" />
-            <Folder />
-            {item.name}
+            <ChevronRight className="transition-transform shrink-0" />
+            <Folder className="shrink-0" />
+            <span className="truncate overflow-hidden min-w-0 flex-1">{item.name}</span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -243,47 +238,6 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
                 onFileClick={onFileClick}
                 activeFilePath={activeFilePath} 
               />
-            ))}
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </Collapsible>
-    </SidebarMenuItem>
-  )
-}
-
-// For sample data
-function Tree({ item }: { item: string | any[] }) {
-  const [name, ...items] = Array.isArray(item) ? item : [item]
-
-  if (!items.length) {
-    return (
-      <SidebarMenuButton
-        isActive={name === "button.tsx"}
-        className="data-[active=true]:bg-transparent"
-      >
-        <File />
-        {name}
-      </SidebarMenuButton>
-    )
-  }
-
-  return (
-    <SidebarMenuItem>
-      <Collapsible
-        className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
-        defaultOpen={name === "components" || name === "ui"}
-      >
-        <CollapsibleTrigger asChild>
-          <SidebarMenuButton>
-            <ChevronRight className="transition-transform" />
-            <Folder />
-            {name}
-          </SidebarMenuButton>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <SidebarMenuSub>
-            {items.map((subItem, index) => (
-              <Tree key={index} item={subItem} />
             ))}
           </SidebarMenuSub>
         </CollapsibleContent>

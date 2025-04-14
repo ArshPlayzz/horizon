@@ -15,10 +15,29 @@ export interface DirectoryItem {
   children?: DirectoryItem[];
 }
 
+// Singleton pattern
+let fileServiceInstance: FileService | null = null;
+
 export class FileService {
   private currentFile: FileInfo | null = null;
   private currentDirectory: string | null = null;
   private directoryStructure: DirectoryItem[] | null = null;
+
+  constructor() {
+    // Sprawdz czy juz istnieje instancja
+    if (fileServiceInstance) {
+      return fileServiceInstance;
+    }
+    fileServiceInstance = this;
+  }
+
+  // Metoda do pobierania instancji singletona
+  static getInstance(): FileService {
+    if (!fileServiceInstance) {
+      fileServiceInstance = new FileService();
+    }
+    return fileServiceInstance;
+  }
 
   /**
    * Otwiera plik i zwraca jego zawartość
@@ -36,13 +55,16 @@ export class FileService {
 
       // Jeśli użytkownik anulował wybór, zwróć null
       if (!selected) {
+        console.log("FileService: Użytkownik anulował wybór pliku");
         return null;
       }
 
       const filePath = selected as string;
+      console.log(`FileService: Wybrano plik: ${filePath}`);
       
       // Odczytaj zawartość pliku
       const content = await readTextFile(filePath);
+      console.log(`FileService: Zawartość pliku (pierwsze 50 znaków): ${content.substring(0, 50)}...`);
       
       // Pobierz nazwę pliku z ścieżki
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
@@ -53,6 +75,7 @@ export class FileService {
         name: fileName,
         content
       };
+      console.log(`FileService: Zaktualizowano currentFile: ${fileName}, długość zawartości: ${content.length}`);
 
       return this.currentFile;
     } catch (error) {
@@ -133,8 +156,11 @@ export class FileService {
    */
   async openFileFromPath(filePath: string): Promise<FileInfo | null> {
     try {
+      console.log(`FileService: Otwieranie pliku z ścieżki: ${filePath}`);
+      
       // Odczytaj zawartość pliku
       const content = await readTextFile(filePath);
+      console.log(`FileService: Zawartość pliku (pierwsze 50 znaków): ${content.substring(0, 50)}...`);
       
       // Pobierz nazwę pliku z ścieżki
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
@@ -145,6 +171,7 @@ export class FileService {
         name: fileName,
         content
       };
+      console.log(`FileService: Zaktualizowano currentFile: ${fileName}, długość zawartości: ${content.length}`);
 
       return this.currentFile;
     } catch (error) {
@@ -204,6 +231,11 @@ export class FileService {
    * Zwraca informacje o bieżącym pliku
    */
   getCurrentFile(): FileInfo | null {
+    if (this.currentFile) {
+      console.log(`FileService: getCurrentFile zwraca: ${this.currentFile.name}, długość zawartości: ${this.currentFile.content.length}`);
+    } else {
+      console.log('FileService: getCurrentFile zwraca null');
+    }
     return this.currentFile;
   }
 

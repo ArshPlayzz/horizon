@@ -24,7 +24,6 @@
 
 </div>
 
-A modern, desktop-based code editor built with Tauri, React, and TypeScript. This application provides a powerful and customizable coding environment with integrated terminal support and file system management.
 
 ## Features
 
@@ -65,6 +64,7 @@ A modern, desktop-based code editor built with Tauri, React, and TypeScript. Thi
 - TypeScript
 - Tailwind CSS
 - Radix UI
+- ShadCN
 - CodeMirror 6
 
 ### Backend (Tauri/Rust)

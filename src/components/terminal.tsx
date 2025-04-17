@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { cn } from "@/lib/utils";
-import { X, Plus, Terminal as TerminalIcon } from "lucide-react";
+import { IconX, IconPlus, IconTerminal } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { useFileContext } from "@/lib/file-context";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,7 +37,6 @@ interface TerminalInstance {
   processName: string;
 }
 
-// Funkcja pomocnicza do wykrywania URL-i
 const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }[] => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts: { text: string; isUrl: boolean; url: string }[] = [];
@@ -45,7 +44,6 @@ const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }
   let match;
 
   while ((match = urlRegex.exec(text)) !== null) {
-    // Dodaj tekst przed URL-em
     if (match.index > lastIndex) {
       parts.push({
         text: text.substring(lastIndex, match.index),
@@ -53,7 +51,6 @@ const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }
         url: ''
       });
     }
-    // Dodaj URL
     parts.push({
       text: match[0],
       isUrl: true,
@@ -62,7 +59,6 @@ const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }
     lastIndex = match.index + match[0].length;
   }
 
-  // Dodaj pozostały tekst
   if (lastIndex < text.length) {
     parts.push({
       text: text.substring(lastIndex),
@@ -74,30 +70,19 @@ const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }
   return parts;
 };
 
-// Funkcja do sanitizacji wyjścia terminala
 const sanitizeTerminalOutput = (text: string): string => {
-  // Remove ANSI escape sequences
   return text
-    // Basic ANSI sequences
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-    // Hyperlinks
     .replace(/\x1b\]8;;.*?\x1b\\/g, '')
     .replace(/\x1b\]8;;.*?\x07/g, '')
-    // Other ANSI sequences
     .replace(/\x1b\]1337;.*?\x1b\\/g, '')
     .replace(/\x1b\]1337;.*?\x07/g, '')
-    // Cursor control sequences
     .replace(/\x1b\[\?25[hl]/g, '')
     .replace(/\x1b\[[0-9]*[ABCDEFGHJKST]/g, '')
-    // Clear screen sequences
     .replace(/\x1b\[[0-9]*[JK]/g, '')
-    // Color sequences
     .replace(/\x1b\[[0-9;]*m/g, '')
-    // Device control sequences
     .replace(/\x1b\[[0-9;]*[cnsu]/g, '')
-    // Terminal mode sequences
     .replace(/\x1b\[[0-9;]*[hl]/g, '')
-    // Remove any remaining escape sequences
     .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '')
     .replace(/\x1b\][^a-zA-Z]*[a-zA-Z]/g, '')
     .replace(/\x1b[^a-zA-Z]/g, '');
@@ -115,7 +100,6 @@ const Terminal: React.FC<TerminalProps> = ({
   const { currentDirectory } = useFileContext();
   const terminalRef = useRef<HTMLDivElement>(null);
 
-  // Load command history when component mounts
   useEffect(() => {
     const loadHistory = async () => {
       try {
@@ -137,7 +121,28 @@ const Terminal: React.FC<TerminalProps> = ({
     loadHistory();
   }, []);
 
-  // Save command history when it changes
+  useEffect(() => {
+    const updateProcessNames = async () => {
+      for (const instance of instances) {
+        try {
+          const processName = await invoke<string>('get_terminal_process_name', { id: instance.id });
+          if (processName !== instance.processName) {
+            setInstances(prev => prev.map(i => 
+              i.id === instance.id 
+                ? { ...i, processName, name: processName }
+                : i
+            ));
+          }
+        } catch (error) {
+          console.error('Failed to update process name:', error);
+        }
+      }
+    };
+
+    const interval = setInterval(updateProcessNames, 1000);
+    return () => clearInterval(interval);
+  }, [instances]);
+
   useEffect(() => {
     const saveHistory = async () => {
       const activeInstance = instances.find(i => i.id === activeInstanceId);
@@ -161,7 +166,6 @@ const Terminal: React.FC<TerminalProps> = ({
         workingDir: currentDirectory || workingDirectory || '.'
       });
 
-      // Get the process name
       const processName = await invoke<string>('get_terminal_process_name', { id });
 
       const newInstance: TerminalInstance = {
@@ -182,7 +186,6 @@ const Terminal: React.FC<TerminalProps> = ({
       setInstances(prev => [...prev, newInstance]);
       setActiveInstanceId(id);
 
-      // Listen for terminal output
       const stdoutUnlisten = await listen<string>(`terminal_output_${id}`, (event) => {
         let output = '';
         if (typeof event.payload === 'string') {
@@ -192,7 +195,6 @@ const Terminal: React.FC<TerminalProps> = ({
         } else {
           output = String(event.payload);
         }
-        // Sanitize output before adding to state
         output = sanitizeTerminalOutput(output);
         setInstances(prev => prev.map(instance => 
           instance.id === id 
@@ -201,7 +203,6 @@ const Terminal: React.FC<TerminalProps> = ({
         ));
       });
 
-      // Listen for terminal errors
       const stderrUnlisten = await listen<string>(`terminal_error_${id}`, (event) => {
         let error = '';
         if (typeof event.payload === 'string') {
@@ -211,7 +212,6 @@ const Terminal: React.FC<TerminalProps> = ({
         } else {
           error = String(event.payload);
         }
-        // Sanitize error before adding to state
         error = sanitizeTerminalOutput(error);
         setInstances(prev => prev.map(instance => 
           instance.id === id 
@@ -220,7 +220,6 @@ const Terminal: React.FC<TerminalProps> = ({
         ));
       });
 
-      // Listen for process exit
       const exitUnlisten = await listen(`terminal_exit_${id}`, () => {
         setInstances(prev => prev.map(instance => 
           instance.id === id 
@@ -243,17 +242,14 @@ const Terminal: React.FC<TerminalProps> = ({
     const instance = instances.find(i => i.id === instanceId);
     if (!instance) return;
 
-    // Jeśli to Ctrl+C, zawsze pozwalamy na jego obsługę, nawet gdy terminal jest zablokowany
     if (input === '\x03') {
       console.log('Sending SIGINT signal');
       try {
-        // Wysyłamy tylko sygnał SIGINT
         await invoke('send_terminal_signal', { 
           id: instanceId,
           signal: 'SIGINT'
         });
 
-        // Odblokowujemy terminal
         setInstances(prev => prev.map(i => 
           i.id === instanceId 
             ? { 
@@ -268,7 +264,6 @@ const Terminal: React.FC<TerminalProps> = ({
         ));
       } catch (error) {
         console.error('Failed to handle Ctrl+C:', error);
-        // W przypadku błędu, przynajmniej odblokuj terminal
         setInstances(prev => prev.map(i => 
           i.id === instanceId 
             ? { ...i, state: { ...i.state, isLocked: false } }
@@ -278,20 +273,16 @@ const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Jeśli terminal jest zablokowany, ignoruj pozostałe inputy
     if (instance.state.isLocked) {
       return;
     }
 
-    // Obsługa komendy clear
     if (input.trim().toLowerCase() === 'clear') {
-      // Najpierw wyczyść ekran
       setInstances(prev => prev.map(i => 
         i.id === instanceId 
           ? { ...i, state: { ...i.state, output: [] } }
           : i
       ));
-      // Następnie dodaj komendę do historii
       setInstances(prev => prev.map(i => 
         i.id === instanceId 
           ? { 
@@ -308,7 +299,6 @@ const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Sprawdź czy to komenda npm run dev
     if (input.trim() === 'npm run dev') {
       setInstances(prev => prev.map(i => 
         i.id === instanceId 
@@ -363,7 +353,6 @@ const Terminal: React.FC<TerminalProps> = ({
     const activeInstance = instances.find(i => i.id === activeInstanceId);
     if (!activeInstance) return;
 
-    // Jeśli terminal jest zablokowany, pozwól tylko na Ctrl+C
     if (activeInstance.state.isLocked) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         e.preventDefault();
@@ -373,16 +362,13 @@ const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Obsługa skrótów klawiszowych
     if (e.ctrlKey || e.metaKey) {
       switch (e.key.toLowerCase()) {
         case 'd':
-          // Ctrl+D / Cmd+D - wysyłamy EOF
           e.preventDefault();
           handleInput('\x04', activeInstanceId);
           return;
         case 'l':
-          // Ctrl+L / Cmd+L - czyścimy ekran
           e.preventDefault();
           setInstances(prev => prev.map(i => 
             i.id === activeInstanceId 
@@ -391,7 +377,6 @@ const Terminal: React.FC<TerminalProps> = ({
           ));
           return;
         case 'u':
-          // Ctrl+U / Cmd+U - czyścimy linię
           e.preventDefault();
           setInstances(prev => prev.map(i => 
             i.id === activeInstanceId 
@@ -400,7 +385,6 @@ const Terminal: React.FC<TerminalProps> = ({
           ));
           return;
         case 'k':
-          // Ctrl+K / Cmd+K - czyścimy ekran i historię
           e.preventDefault();
           setInstances(prev => prev.map(i => 
             i.id === activeInstanceId 
@@ -409,7 +393,6 @@ const Terminal: React.FC<TerminalProps> = ({
           ));
           return;
         case 'a':
-          // Ctrl+A / Cmd+A - przejście na początek linii
           e.preventDefault();
           const input = activeInstance.state.currentInput;
           setInstances(prev => prev.map(i => 
@@ -419,11 +402,9 @@ const Terminal: React.FC<TerminalProps> = ({
           ));
           return;
         case 'e':
-          // Ctrl+E / Cmd+E - przejście na koniec linii
           e.preventDefault();
           return;
         case 'w':
-          // Ctrl+W / Cmd+W - usunięcie ostatniego słowa
           e.preventDefault();
           const words = activeInstance.state.currentInput.split(' ');
           words.pop();
@@ -434,23 +415,19 @@ const Terminal: React.FC<TerminalProps> = ({
           ));
           return;
         case 'r':
-          // Ctrl+R / Cmd+R - wyszukiwanie w historii komend
           e.preventDefault();
           return;
         case 't':
-          // Ctrl+T / Cmd+T - otwarcie nowej karty terminala
           e.preventDefault();
           createNewInstance();
           return;
         case 'n':
-          // Ctrl+N / Cmd+N - otwarcie nowego okna terminala
           e.preventDefault();
           createNewInstance();
           return;
       }
     }
 
-    // Obsługa przełączania między kartami
     if ((e.ctrlKey || e.metaKey) && (e.key === 'PageUp' || e.key === 'PageDown')) {
       e.preventDefault();
       const currentIndex = instances.findIndex(i => i.id === activeInstanceId);
@@ -462,14 +439,12 @@ const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Obsługa klawiszy strzałek
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
       const history = activeInstance.state.commandHistory;
       const currentIndex = activeInstance.state.historyIndex;
       
       if (e.key === 'ArrowUp' && currentIndex > 0) {
-        // Przejdź do poprzedniej komendy
         setInstances(prev => prev.map(i => 
           i.id === activeInstanceId 
             ? { 
@@ -483,7 +458,6 @@ const Terminal: React.FC<TerminalProps> = ({
             : i
         ));
       } else if (e.key === 'ArrowDown' && currentIndex < history.length) {
-        // Przejdź do następnej komendy lub wyczyść jeśli jesteśmy na końcu
         setInstances(prev => prev.map(i => 
           i.id === activeInstanceId 
             ? { 
@@ -500,14 +474,12 @@ const Terminal: React.FC<TerminalProps> = ({
       return;
     }
 
-    // Obsługa klawisza Tab
     if (e.key === 'Tab') {
       e.preventDefault();
       // TODO: Implementacja autouzupełniania
       return;
     }
 
-    // Standardowa obsługa klawiszy
     if (e.key === 'Enter' && activeInstance.state.currentInput.trim()) {
       handleInput(activeInstance.state.currentInput.trim(), activeInstanceId);
     } else if (e.key === 'Backspace') {
@@ -550,18 +522,18 @@ const Terminal: React.FC<TerminalProps> = ({
   return (
     <div 
       className={cn(
-        "flex flex-col h-full text-sidebar-foreground",
+        "flex flex-col h-full text-sidebar-foreground bg-gradient-to-b from-sidebar-background to-sidebar-background/95 backdrop-blur-sm",
         className
       )}
       onKeyDown={handleKeyPress}
       tabIndex={0}
     >
-      <div className="flex items-center justify-between py-2 px-4 border-b border-sidebar-border bg-sidebar/50">
+      <div className="flex items-center justify-between py-2 px-4 border-b border-sidebar-border/20 bg-sidebar-accent/5">
         <div className="flex items-center gap-2">
-          <div className="text-sm font-medium text-sidebar-foreground">
+          <div className="text-sm font-medium text-sidebar-foreground/90">
             {activeInstance?.name || 'Terminal'}
           </div>
-          <div className="text-xs text-sidebar-foreground/70">
+          <div className="text-xs text-sidebar-foreground/50">
             {activeInstance?.workingDirectory || currentDirectory || workingDirectory || 'Default'}
           </div>
         </div>
@@ -570,9 +542,9 @@ const Terminal: React.FC<TerminalProps> = ({
           size="icon" 
           onClick={onClose} 
           title="Close Terminal"
-          className="h-6 w-6 hover:bg-accent hover:text-accent-foreground"
+          className="h-6 w-6 hover:bg-sidebar-accent/20 hover:text-sidebar-foreground transition-all duration-200"
         >
-          <X className="h-3.5 w-3.5" />
+          <IconX className="h-4 w-4" />
         </Button>
       </div>
       <div className="flex flex-1 min-h-0">
@@ -588,7 +560,7 @@ const Terminal: React.FC<TerminalProps> = ({
                     part.isUrl ? (
                       <span
                         key={j}
-                        className="text-blue-500 hover:text-blue-400 cursor-pointer underline"
+                        className="text-blue-400 hover:text-blue-300 cursor-pointer underline transition-colors duration-200"
                         onClick={async () => {
                           try {
                             await open(part.url);
@@ -606,7 +578,7 @@ const Terminal: React.FC<TerminalProps> = ({
                 </div>
               ))}
               <div className="flex items-center">
-                <span className="text-green-500">$</span>
+                <span className="text-emerald-400">$</span>
                 <span className="ml-2 font-mono whitespace-pre">
                   {activeInstance?.state.currentInput}
                   {activeInstance?.state.isLocked && (
@@ -616,53 +588,53 @@ const Terminal: React.FC<TerminalProps> = ({
                   )}
                 </span>
                 {activeInstance?.id === activeInstanceId && !activeInstance?.state.isLocked && (
-                  <span className="bg-sidebar-foreground w-1 h-4 ml-0 [animation:blink_1s_steps(1)_infinite] [@keyframes_blink{0%,100%{opacity:1}50%{opacity:0}}]"></span>
+                  <span className="bg-sidebar-foreground/70 w-1 h-4 ml-0 [animation:blink_1s_steps(1)_infinite] [@keyframes_blink{0%,100%{opacity:1}50%{opacity:0}}]"></span>
                 )}
               </div>
             </div>
           </ScrollArea>
         </div>
-        <Separator orientation="vertical" />
-        <div className="w-48 flex flex-col bg-sidebar/50">
+        <Separator orientation="vertical" className="bg-sidebar-border/20" />
+        <div className="w-48 flex flex-col bg-sidebar-accent/5">
           <ScrollArea className="flex-1 h-full">
             <div className="p-2 space-y-1">
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm" 
-                className="w-full justify-start hover:bg-accent hover:text-accent-foreground"
+                className="w-full justify-start hover:bg-sidebar-accent/20 hover:text-sidebar-foreground transition-all duration-200"
                 title="Create New Terminal"
                 onClick={createNewInstance}
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <IconPlus className="h-4 w-4 mr-2" />
                 New Terminal
               </Button>
               {instances.map((instance) => (
                 <div
                   key={instance.id}
                   className={cn(
-                    "flex items-center justify-between px-2 py-1 rounded cursor-pointer transition-all duration-300",
+                    "flex items-center justify-between px-2 py-1 rounded-md cursor-pointer transition-all duration-200",
                     instance.id === activeInstanceId 
-                      ? "bg-accent text-accent-foreground" 
-                      : "hover:bg-accent/50 text-sidebar-foreground/70"
+                      ? "bg-sidebar-accent/20 text-sidebar-foreground" 
+                      : "hover:bg-sidebar-accent/10 text-sidebar-foreground/70"
                   )}
                   title={`Open Terminal: ${instance.name}`}
                   onClick={() => setActiveInstanceId(instance.id)}
                 >
                   <div className="flex items-center gap-2">
-                    <TerminalIcon className="h-4 w-4" />
+                    <IconTerminal className="h-4 w-4" />
                     <span className="truncate text-sm font-medium">{instance.name}</span>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 hover:bg-accent/80"
+                    className="h-6 w-6 hover:bg-sidebar-accent/20 transition-all duration-200"
                     title="Close Terminal"
                     onClick={(e) => {
                       e.stopPropagation();
                       closeInstance(instance.id);
                     }}
                   >
-                    <X className="h-4 w-4 text-sidebar-foreground/70" />
+                    <IconX className="h-4 w-4 text-sidebar-foreground/70" />
                   </Button>
                 </div>
               ))}

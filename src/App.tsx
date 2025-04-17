@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import {
     SidebarInset,
     SidebarProvider,
+    useSidebar
 } from "@/components/ui/sidebar"
 import { CodeEditor } from "./components/code-editor"
 import { FileContextProvider, useFileContext } from "./lib/file-context"
@@ -12,9 +13,9 @@ import { ImageViewer } from "@/components/image-viewer"
 import { convertFileSrc } from "@tauri-apps/api/core"
 import Terminal from "./components/terminal"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
-import { PanelBottom, PanelLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FileSelectionTabs } from "@/components/ui/file-selection-tabs"
+import { IconLayoutSidebar, IconLayoutBottombar, IconLayoutSidebarFilled, IconLayoutBottombarFilled } from "@tabler/icons-react"
 
 interface TerminalInstance {
   id: string;
@@ -31,7 +32,7 @@ interface TerminalInstance {
   processName: string;
 }
 
-function AppContent() {
+function MainContent() {
     const { 
         currentFile, 
         updateFileContent, 
@@ -39,6 +40,7 @@ function AppContent() {
         isImageFile
     } = useFileContext();
     
+    const { state: sidebarState } = useSidebar();
     const prevFilePathRef = useRef<string | null>(null);
     
     const [isTerminalVisible, setIsTerminalVisible] = useState(false);
@@ -137,57 +139,65 @@ function AppContent() {
 
     return (
         <ThemeProvider forceDarkMode={true}>
-            <SidebarProvider>
-                <AppSidebar variant="inset"/>
-                <SidebarInset className="overflow-hidden border-muted border rounded-lg">
-                    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-sidebar">
-                        <FileSelectionTabs />
-                        <div className="ml-auto flex gap-2">
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => document.dispatchEvent(new CustomEvent('toggle-sidebar'))}
-                                title="Toggle Sidebar"
-                            >
-                                <PanelLeft className="h-5 w-5" />
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => setIsTerminalVisible(!isTerminalVisible)}
-                                title={isTerminalVisible ? "Hide Terminal" : "Show Terminal"}
-                            >
-                                <PanelBottom className="h-5 w-5" />
-                            </Button>
-                        </div>
-                    </header>
-                    
-                    <div className="flex flex-1 flex-col">
-                        <ResizablePanelGroup direction="vertical">
-                            <ResizablePanel defaultSize={60}>
-                                {currentFile ? (
-                                    isImageFile(currentFile.path) ? (
-                                        <ImageViewer src={convertFileSrc(currentFile.path)} />
-                                    ) : (
-                                        <MemoizedCodeEditor
+            <AppSidebar variant="inset"/>
+            <SidebarInset className="border rounded-xl select-none">
+                <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-sidebar rounded-t-xl">
+                    <FileSelectionTabs />
+                    <div className="ml-auto flex gap-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => document.dispatchEvent(new CustomEvent('toggle-sidebar'))}
+                            title="Toggle Sidebar"
+                        >
+                            {sidebarState === "collapsed" ? (
+                                <IconLayoutSidebar className="h-4 w-4" />
+                            ) : (
+                                <IconLayoutSidebarFilled className="h-4 w-4" />
+                            )}
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setIsTerminalVisible(!isTerminalVisible)}
+                            title={isTerminalVisible ? "Hide Terminal" : "Show Terminal"}
+                        >
+                            {isTerminalVisible ? (
+                                <IconLayoutBottombarFilled className="h-4 w-4" />
+                            ) : (
+                                <IconLayoutBottombar className="h-4 w-4" />
+                            )}
+                        </Button>
+                    </div>
+                </header>
+                
+                <div className="flex flex-1 flex-col rounded-b-xl">
+                    <ResizablePanelGroup direction="vertical">
+                        <ResizablePanel defaultSize={60}>
+                            {currentFile ? (
+                                isImageFile(currentFile.path) ? (
+                                    <ImageViewer src={convertFileSrc(currentFile.path)} />
+                                ) : (
+                                    <MemoizedCodeEditor
                                             key={activeFilePath}
                                             file={currentFile}
                                             onChangeContent={handleContentChange}
                                             language={fileLanguage}
                                         />
-                                    )
-                                ) : (
-                                    <div className="flex h-full items-center justify-center">
-                                        <p className="text-sm text-muted-foreground">
-                                            No file selected
-                                        </p>
-                                    </div>
-                                )}
-                            </ResizablePanel>
-                            {isTerminalVisible && (
-                                <>
-                                    <ResizableHandle />
-                                    <ResizablePanel defaultSize={40}>
+                                )
+                            ) : (
+                                <div className="flex h-full items-center justify-center">
+                                    <p className="text-sm text-muted-foreground">
+                                        No file selected
+                                    </p>
+                                </div>
+                            )}
+                        </ResizablePanel>
+                        {isTerminalVisible && (
+                            <>
+                                <ResizableHandle />
+                                <ResizablePanel defaultSize={40}>
+                                    <div className="select-text w-full h-full">
                                         <Terminal
                                             onClose={() => setIsTerminalVisible(false)}
                                             isTerminalVisible={isTerminalVisible}
@@ -196,13 +206,13 @@ function AppContent() {
                                             activeInstanceId={activeTerminalId}
                                             setActiveInstanceId={setActiveTerminalId}
                                         />
-                                    </ResizablePanel>
-                                </>
-                            )}
-                        </ResizablePanelGroup>
-                    </div>
-                </SidebarInset>
-            </SidebarProvider>
+                                    </div>
+                                </ResizablePanel>
+                            </>
+                        )}
+                    </ResizablePanelGroup>
+                </div>
+            </SidebarInset>
         </ThemeProvider>
     );
 }
@@ -210,7 +220,9 @@ function AppContent() {
 export default function App() {
     return (
         <FileContextProvider>
-            <AppContent />
+            <SidebarProvider>
+                <MainContent />
+            </SidebarProvider>
         </FileContextProvider>
     );
 }

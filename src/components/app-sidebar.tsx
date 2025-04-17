@@ -1,14 +1,12 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { ChevronRight, File, FolderOpen, Save, Download, FileUp, Search, X } from "lucide-react"
+import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconUpload, IconSearch, IconX, IconGitBranch, IconFolder } from "@tabler/icons-react"
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
-
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
@@ -35,12 +33,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     currentFile
   } = useFileContext();
   
-  // Stan lokalny dla wyszukiwania
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchResults, setSearchResults] = useState<DirectoryItem[]>([]);
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("files");
 
   useEffect(() => {
     const handleToggleSidebar = () => {
@@ -53,12 +51,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
   }, [toggleSidebar]);
 
-  // Zoptymalizowana funkcja do wyszukiwania plików z debounce
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setSearchQuery(query);
 
-    // Clear previous debounce timeout
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
     }
@@ -71,27 +67,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     setIsSearchMode(true);
     
-    // Debounce search to prevent excessive API calls
     searchDebounceRef.current = setTimeout(() => {
       performSearch(query);
-    }, 300); // 300ms debounce delay
+    }, 300);
   };
 
-  // Separate function to perform the actual search
   const performSearch = async (query: string) => {
     if (!query.trim()) return;
     
     setIsSearching(true);
     
     try {
-      // Przeszukaj zarówno nazwy plików jak i zawartość
       const fileNameResults = await searchFiles(query);
       const contentResults = await searchFileContents(query);
       
-      // Łączymy wyniki i usuwamy duplikaty
       const combinedResults = [...fileNameResults];
       
-      // Dodaj wyniki z przeszukiwania zawartości, jeśli nie są już w wynikach z nazw plików
       contentResults.forEach(contentItem => {
         if (!combinedResults.some(item => item.path === contentItem.path)) {
           combinedResults.push(contentItem);
@@ -100,13 +91,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       
       setSearchResults(combinedResults);
     } catch (error) {
-      console.error("Błąd podczas wyszukiwania:", error);
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Cancel any pending search when component unmounts
   useEffect(() => {
     return () => {
       if (searchDebounceRef.current) {
@@ -115,7 +104,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     };
   }, []);
 
-  // Wyczyść wyszukiwanie
   const clearSearch = () => {
     setSearchQuery("");
     setSearchResults([]);
@@ -148,159 +136,209 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const handleFileClick = async (filePath: string) => {
     try {
       const file = await openFileFromPath(filePath);
-      if (file) {
-      } else {
-      }
     } catch (error) {
-      console.error("Error opening file:", error);
     }
   };
 
   return (
     <Sidebar {...props}>
-      <SidebarContent className="relative w-full h-full">
-          <SidebarGroup className="w-full overflow-hidden">
-            <div className="flex flex-row justify-start p-1 gap-2 w-full max-w-[18rem]">
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={handleOpenFile}
-                title="Open File"
-                className="shrink-0"
-              >
-                <FileUp className="h-4 w-4" />
-              </Button>
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={handleOpenDirectory}
-                title="Open Directory"
-                className="shrink-0"
-              >
-                <FolderOpen className="h-4 w-4" />
-              </Button>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      onClick={handleSaveFile}
-                      disabled={!currentFile}
-                      className="shrink-0"
-                    >
-                      <Save className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {currentFile ? "Save" : "No file open to save"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      onClick={handleSaveAsFile}
-                      disabled={!currentFile}
-                      className="shrink-0"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {currentFile ? "Save As" : "No file open to save"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-            
-            {/* Pole wyszukiwania */}
-            <div className="px-2 py-2 flex max-w-[18rem]">
-              <div className="relative flex-1">
-                <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <Input
-                  className="pl-8 pr-8 text-sm" 
-                  placeholder="Search files and content..."
-                  value={searchQuery}
-                  onChange={handleSearchInputChange}
-                />
-                {searchQuery && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button 
-                      className="flex items-center justify-center" 
-                      onClick={clearSearch}
-                    >
-                      <X className="h-4 w-4 text-muted-foreground" />
-                    </button>
+      <SidebarContent className="relative w-full h-full bg-sidebar-background select-none">
+        <div className="flex h-full">
+          <div className="w-12 bg-sidebar-accent/5 border-r border-sidebar-border/20 flex flex-col items-center py-2">
+            <button
+              onClick={() => setActiveTab("files")}
+              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "files" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+            >
+              <IconFolder className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab("search")}
+              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "search" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+            >
+              <IconSearch className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setActiveTab("git")}
+              className={`p-2 rounded-md cursor-pointer ${activeTab === "git" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+            >
+              <IconGitBranch className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 flex flex-col">
+            <div className="flex flex-col w-full bg-gradient-to-r from-sidebar-background to-sidebar-background/95 backdrop-blur-sm border-b border-sidebar-border/20">
+              <div className="flex items-center justify-between px-3 py-2 w-full">
+                <div className="flex w-full justify-between items-center gap-2">
+                  <SidebarGroupLabel className="mb-0">
+                    {activeTab === "search" 
+                      ? `Search` 
+                      : (activeTab === "git"
+                          ? `Git Integration`
+                          : (isSearchMode 
+                              ? `Results (${searchResults.length})` 
+                              : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')))}
+                  </SidebarGroupLabel>
+                  <div className="flex items-center gap-1">
+                    {activeTab === "files" && (
+                      <>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={handleOpenFile}
+                          title="Open File"
+                          className="h-6 w-6 hover:bg-sidebar-accent/20"
+                        >
+                          <IconFile className="size-3" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={handleOpenDirectory}
+                          title="Open Directory"
+                          className="h-6 w-6 hover:bg-sidebar-accent/20"
+                        >
+                          <IconFolderOpen className="size-3" />
+                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={handleSaveFile}
+                                disabled={!currentFile}
+                                className="h-6 w-6 hover:bg-sidebar-accent/20 disabled:hover:scale-100"
+                              >
+                                <IconDeviceFloppy className="size-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {currentFile ? "Save" : "No file open to save"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={handleSaveAsFile}
+                                disabled={!currentFile}
+                                className="h-6 w-6 hover:bg-sidebar-accent/20 disabled:hover:scale-100"
+                              >
+                                <IconDownload className="size-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {currentFile ? "Save" : "No file open to save"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
-            
-            <SidebarGroupLabel>
-              {isSearchMode 
-                ? `Results (${searchResults.length})` 
-                : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')}
-            </SidebarGroupLabel>
-            <SidebarGroupContent className="relative overflow-hidden h-full">
-            <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
 
-              <SidebarMenu>
-                {directoryStructure ? (
-                  isSearchMode ? (
-                    // Pokazujemy wyniki wyszukiwania
-                    isSearching ? (
-                      <div className="px-2 py-4 text-center text-muted-foreground">
-                        <p className="text-sm">Searching...</p>
+            <div className="flex-1 overflow-hidden">
+              {activeTab === "files" && (
+                <SidebarGroupContent className="relative overflow-hidden h-full">
+                  <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
+                    <SidebarMenu>
+                      {directoryStructure ? (
+                        directoryStructure.map((item, index) => (
+                          <DirectoryTree 
+                            key={`file-${index}`} 
+                            item={item} 
+                            onFileClick={handleFileClick}
+                            activeFilePath={activeFilePath} 
+                          />
+                        ))
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                          <p className="text-xs mt-2">Open a directory to view files</p>
+                        </div>
+                      )}
+                    </SidebarMenu>
+                  </ScrollArea>
+                </SidebarGroupContent>
+              )}
+
+              {activeTab === "search" && (
+                <SidebarGroupContent className="relative overflow-hidden h-full">
+                  <div className="px-1 pb-2 pt-2">
+                    <div className="relative ml-2">
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <IconSearch className="h-4 w-4 text-muted-foreground" />
                       </div>
-                    ) : searchResults.length > 0 ? (
-                      searchResults.map((item, index) => (
-                        <DirectoryTree 
-                          key={`search-${index}`} 
-                          item={item} 
-                          onFileClick={handleFileClick}
-                          activeFilePath={activeFilePath} 
-                        />
-                      ))
-                    ) : (
-                      <div className="px-2 py-4 text-center text-muted-foreground">
-                        <p className="text-sm">No results for"{searchQuery}"</p>
-                      </div>
-                    )
-                  ) : (
-                    // Pokazujemy standardową strukturę katalogów
-                    directoryStructure.map((item, index) => (
-                      <DirectoryTree 
-                        key={index} 
-                        item={item} 
-                        onFileClick={handleFileClick}
-                        activeFilePath={activeFilePath} 
+                      <Input
+                        className="pl-8 pr-8 text-xs bg-sidebar-accent/10 border-sidebar-border/20 focus:border-sidebar-border/40" 
+                        placeholder="Search files and content..."
+                        value={searchQuery}
+                        onChange={handleSearchInputChange}
                       />
-                    ))
-                  )
-                ) : (
-                  // Zamiast przykładowych danych, pokazujemy komunikat
-                  <div className="px-2 py-8 text-center text-muted-foreground">
-                    <p className="mb-2">No directory opened</p>
-                    <p className="text-xs">Click the folder icon above to open a directory</p>
+                      {searchQuery && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                          <button 
+                            className="flex items-center justify-center hover:text-foreground transition-colors" 
+                            onClick={clearSearch}
+                          >
+                            <IconX className="h-4 w-4 text-muted-foreground" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </SidebarMenu>
-              </ScrollArea>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                  <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
+                    <SidebarMenu>
+                      {isSearching ? (
+                        <div className="px-2 py-4 text-center text-muted-foreground">
+                          <p className="text-sm">Searching...</p>
+                        </div>
+                      ) : searchResults.length > 0 ? (
+                        searchResults.map((item, index) => (
+                          <DirectoryTree 
+                            key={`search-${index}`} 
+                            item={item} 
+                            onFileClick={handleFileClick}
+                            activeFilePath={activeFilePath} 
+                          />
+                        ))
+                      ) : searchQuery ? (
+                        <div className="px-2 py-4 text-center text-muted-foreground">
+                          <p className="text-sm">No results for "{searchQuery}"</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                          <p className="text-xs mt-2">Enter a search term to find files and content</p>
+                        </div>
+                      )}
+                    </SidebarMenu>
+                  </ScrollArea>
+                </SidebarGroupContent>
+              )}
+
+              {activeTab === "git" && (
+                <SidebarGroupContent className="relative overflow-hidden h-full">
+                  <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
+                    <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                      <p className="mb-2">Git integration coming soon</p>
+                      <p className="text-xs">This feature will allow you to manage your git repository</p>
+                    </div>
+                  </ScrollArea>
+                </SidebarGroupContent>
+              )}
+            </div>
+          </div>
+        </div>
       </SidebarContent>
       <SidebarRail />
     </Sidebar>
   )
 }
 
-// For real directory structure
 function DirectoryTree({ item, onFileClick, activeFilePath }: { 
   item: DirectoryItem, 
   onFileClick: (path: string) => void,
@@ -313,7 +351,6 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     if (item.isDirectory) {
       setIsExpanded(!isExpanded);
       
-      // If directory needs loading and is being expanded, load contents
       if (item.needsLoading && !isExpanded) {
         loadDirectoryContents(item.path, item);
       }
@@ -322,21 +359,20 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     }
   };
   
-  // Check if this file is currently active
   const isActive = activeFilePath === item.path;
   
   return (
-    <div className="pl-1 max-w-[18rem]">
+    <div className="pl-1 max-w-[17rem]">
       <div 
         className={`flex flex-row items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isActive ? 'bg-muted' : ''}`}
         onClick={handleClick}
       >
         {item.isDirectory ? (
-          <ChevronRight 
+          <IconChevronRight 
             className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
           />
         ) : (
-          <File className="h-4 w-4 text-muted-foreground" />
+          <IconFile className="h-4 w-4 text-muted-foreground" />
         )}
         <span className="truncate text-sm">{item.name}</span>
       </div>

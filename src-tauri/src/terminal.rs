@@ -51,7 +51,10 @@ pub async fn create_terminal_session(
     #[cfg(target_os = "windows")]
     let (cmd, args): (&str, Vec<&str>) = ("cmd", vec![]);
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    let (cmd, args): (&str, Vec<&str>) = ("zsh", vec![]);
+
+    #[cfg(target_os = "linux")]
     let (cmd, args): (&str, Vec<&str>) = ("bash", vec![]);
     
     let shell = app.shell();
@@ -212,7 +215,10 @@ pub async fn get_terminal_process_name(
         #[cfg(target_os = "windows")]
         return Ok("cmd".to_string());
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        return Ok("zsh".to_string());
+
+        #[cfg(target_os = "linux")]
         return Ok("bash".to_string());
     }
 }

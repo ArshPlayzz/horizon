@@ -6,6 +6,7 @@ export interface FileInfo {
   path: string;
   name: string;
   content: string;
+  isUnsaved?: boolean;
 }
 
 export interface DirectoryItem {
@@ -17,26 +18,23 @@ export interface DirectoryItem {
   needsLoading?: boolean;
 }
 
-// Singleton pattern
 let fileServiceInstance: FileService | null = null;
 
 export class FileService {
   private currentFile: FileInfo | null = null;
   private currentDirectory: string | null = null;
   private directoryStructure: DirectoryItem[] | null = null;
-  private fileContentIndex: Map<string, string> = new Map(); // Cache for file contents
-  private fileSearchIndex: Map<string, Set<string>> = new Map(); // Index for search terms
+  private fileContentIndex: Map<string, string> = new Map();
+  private fileSearchIndex: Map<string, Set<string>> = new Map();
   private indexingInProgress: boolean = false;
 
   constructor() {
-    // Sprawdz czy juz istnieje instancja
     if (fileServiceInstance) {
       return fileServiceInstance;
     }
     fileServiceInstance = this;
   }
 
-  // Metoda do pobierania instancji singletona
   static getInstance(): FileService {
     if (!fileServiceInstance) {
       fileServiceInstance = new FileService();
@@ -45,11 +43,10 @@ export class FileService {
   }
 
   /**
-   * Otwiera plik i zwraca jego zawartość
+   * Opens a file and returns its content
    */
   async openFile(): Promise<FileInfo | null> {
     try {
-      // Otwórz dialog wyboru pliku
       const selected = await open({
         multiple: false,
         filters: [
@@ -59,29 +56,21 @@ export class FileService {
         ]
       });
 
-      // Jeśli użytkownik anulował wybór, zwróć null
       if (!selected) {
-        console.log("FileService: Użytkownik anulował wybór pliku");
         return null;
       }
 
       const filePath = selected as string;
-      console.log(`FileService: Wybrano plik: ${filePath}`);
       
-      // Odczytaj zawartość pliku
       const content = await readTextFile(filePath);
-      console.log(`FileService: Zawartość pliku (pierwsze 50 znaków): ${content.substring(0, 50)}...`);
       
-      // Pobierz nazwę pliku z ścieżki
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
 
-      // Zapisz informacje o bieżącym pliku
       this.currentFile = {
         path: filePath,
         name: fileName,
         content
       };
-      console.log(`FileService: Zaktualizowano currentFile: ${fileName}, długość zawartości: ${content.length}`);
 
       return this.currentFile;
     } catch (error) {
@@ -89,19 +78,18 @@ export class FileService {
       throw error;
     }
   }
-
+  
   /**
-   * Otwiera folder projektu i skanuje jego strukturę
+   * Opens a directory and returns its structure
    */
   async openDirectory(): Promise<DirectoryItem[] | null> {
     try {
-      // Otwórz dialog wyboru folderu
+      // Open folder selection dialog
       const selected = await open({
         directory: true,
         multiple: false
       });
 
-      // Jeśli użytkownik anulował wybór, zwróć null
       if (!selected) {
         return null;
       }
@@ -109,36 +97,34 @@ export class FileService {
       const dirPath = selected as string;
       this.currentDirectory = dirPath;
       
-      // Clear indexes when opening a new directory
       this.fileContentIndex.clear();
       this.fileSearchIndex.clear();
       
-      // Skanuj strukturę folderu
       this.directoryStructure = await this.scanDirectory(dirPath);
       
-      // Start background indexing
       setTimeout(() => this.indexDirectoryContents(), 1000);
       
       return this.directoryStructure;
     } catch (error) {
-      console.error('Błąd podczas otwierania folderu:', error);
+      console.error('Error opening directory:', error);
       throw error;
     }
   }
 
   /**
-   * Rekurencyjnie skanuje strukturę folderu
+   * Scans a directory and returns its structure
+   * @param dirPath - Path to the directory to scan
+   * @param depth - Current depth in the directory tree
+   * @returns Array of directory items
    */
   private async scanDirectory(dirPath: string, depth: number = 0): Promise<DirectoryItem[]> {
     try {
       const entries = await readDir(dirPath);
       const result: DirectoryItem[] = [];
 
-      // Limit recursion depth for initial loading
       const maxInitialDepth = 2;
 
       for (const entry of entries) {
-        // Konstruujemy ścieżkę używając funkcji join, która obsługuje różne systemy operacyjne
         const entryPath = await join(dirPath, entry.name);
         
         const item: DirectoryItem = {
@@ -149,11 +135,9 @@ export class FileService {
         };
 
         if (item.isDirectory) {
-          // For directories, only scan children if within the initial depth limit
           if (depth < maxInitialDepth) {
             item.children = await this.scanDirectory(item.path, depth + 1);
           } else {
-            // Mark directories that need lazy loading
             item.children = [];
             item.needsLoading = true;
           }
@@ -162,20 +146,21 @@ export class FileService {
         result.push(item);
       }
 
-      // Sortuj - najpierw foldery, potem pliki, alfabetycznie
       return result.sort((a, b) => {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
         return a.name.localeCompare(b.name);
       });
     } catch (error) {
-      console.error(`Błąd podczas skanowania folderu ${dirPath}:`, error);
+      console.error(`Error scanning directory ${dirPath}:`, error);
       return [];
     }
   }
 
   /**
-   * Lazily loads the contents of a directory when needed
+   * Loads the contents of a directory
+   * @param dirPath - Path to the directory
+   * @returns Array of directory items
    */
   async loadDirectoryContents(dirPath: string): Promise<DirectoryItem[]> {
     try {
@@ -187,44 +172,40 @@ export class FileService {
   }
 
   /**
-   * Otwiera plik z określonej ścieżki
+   * Opens a file from a given path
+   * @param filePath - Path to the file
+   * @returns File information or null if failed
    */
   async openFileFromPath(filePath: string): Promise<FileInfo | null> {
     try {
-      console.log(`FileService: Otwieranie pliku z ścieżki: ${filePath}`);
+            const content = await readTextFile(filePath);
       
-      // Odczytaj zawartość pliku
-      const content = await readTextFile(filePath);
-      console.log(`FileService: Zawartość pliku (pierwsze 50 znaków): ${content.substring(0, 50)}...`);
-      
-      // Pobierz nazwę pliku z ścieżki
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
 
-      // Zapisz informacje o bieżącym pliku
       this.currentFile = {
         path: filePath,
         name: fileName,
         content
       };
-      console.log(`FileService: Zaktualizowano currentFile: ${fileName}, długość zawartości: ${content.length}`);
 
       return this.currentFile;
     } catch (error) {
-      console.error('Błąd podczas otwierania pliku:', error);
+      console.error('Error opening file from path:', error);
       throw error;
     }
   }
 
   /**
-   * Zapisuje zawartość do bieżącego pliku lub otwiera dialog zapisu
+   * Saves a file with the given content
+   * @param content - Content to save
+   * @param saveAs - Whether to show save dialog even if file exists
+   * @returns File information or null if failed
    */
   async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | null> {
     try {
       let filePath: string | null = null;
 
-      // Jeśli zapisujemy jako nowy plik lub nie ma bieżącego pliku
       if (saveAs || !this.currentFile) {
-        // Otwórz dialog zapisywania pliku
         const selected = await save({
           filters: [
             { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
@@ -233,22 +214,18 @@ export class FileService {
         });
 
         if (!selected) {
-          return null; // Użytkownik anulował
+          return null;
         }
 
         filePath = selected as string;
       } else {
-        // Użyj ścieżki bieżącego pliku
         filePath = this.currentFile.path;
       }
 
-      // Zapisz zawartość do pliku
       await writeTextFile(filePath, content);
 
-      // Pobierz nazwę pliku z ścieżki
       const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
 
-      // Zaktualizuj informacje o bieżącym pliku
       this.currentFile = {
         path: filePath,
         name: fileName,
@@ -257,32 +234,30 @@ export class FileService {
 
       return this.currentFile;
     } catch (error) {
-      console.error('Błąd podczas zapisywania pliku:', error);
+      console.error('Error saving file:', error);
       throw error;
     }
   }
 
   /**
-   * Zwraca informacje o bieżącym pliku
+   * Returns the current file
+   * @returns Current file information or null
    */
   getCurrentFile(): FileInfo | null {
-    if (this.currentFile) {
-      console.log(`FileService: getCurrentFile zwraca: ${this.currentFile.name}, długość zawartości: ${this.currentFile.content.length}`);
-    } else {
-      console.log('FileService: getCurrentFile zwraca null');
-    }
     return this.currentFile;
   }
 
   /**
-   * Zwraca strukturę bieżącego folderu
+   * Returns the structure of the current directory
+   * @returns Directory structure or null
    */
   getCurrentDirectoryStructure(): DirectoryItem[] | null {
     return this.directoryStructure;
   }
 
   /**
-   * Zwraca ścieżkę do bieżącego folderu
+   * Returns the path to the current directory
+   * @returns Current directory path or null
    */
   getCurrentDirectory(): string | null {
     return this.currentDirectory;
@@ -297,14 +272,12 @@ export class FileService {
     }
     
     this.indexingInProgress = true;
-    console.log('Starting background file indexing...');
     
     const indexableExtensions = [
       'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'md', 'txt', 
       'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'swift'
     ];
     
-    // Collect all files to index
     const filesToIndex: string[] = [];
     const collectFiles = (items: DirectoryItem[]) => {
       for (const item of items) {
@@ -321,54 +294,44 @@ export class FileService {
     
     collectFiles(this.directoryStructure);
     
-    // Index files in batches to avoid blocking the UI
     const batchSize = 10;
     for (let i = 0; i < filesToIndex.length; i += batchSize) {
       const batch = filesToIndex.slice(i, i + batchSize);
       
-      // Process each file in the batch
       await Promise.all(batch.map(async (filePath) => {
         try {
-          // Skip already indexed files
           if (this.fileContentIndex.has(filePath)) {
             return;
           }
           
           const content = await readTextFile(filePath);
-          
-          // Store the content in the index
           this.fileContentIndex.set(filePath, content);
           
-          // Create search terms index
           const words = content.toLowerCase().split(/\s+/);
           const uniqueWords = new Set(words);
           
-          // Add to the search index
           for (const word of uniqueWords) {
-            if (word.length > 2) { // Skip very short words
+            if (word.length > 2) {
               const existingFiles = this.fileSearchIndex.get(word) || new Set();
               existingFiles.add(filePath);
               this.fileSearchIndex.set(word, existingFiles);
             }
           }
         } catch (error) {
-          // Silent fail for indexing, just skip this file
         }
       }));
       
-      // Yield to UI thread after each batch
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     
     this.indexingInProgress = false;
-    console.log('File indexing completed!');
   }
 
   /**
-   * Przeszukuje strukturę katalogów w poszukiwaniu plików zawierających podany tekst
-   * @param query Tekst do wyszukania w treści plików
-   * @param maxResults Maksymalna liczba wyników
-   * @returns Tablica elementów pasujących do zapytania
+   * Searches for files containing the given query
+   * @param query - Search query
+   * @param maxResults - Maximum number of results to return
+   * @returns Array of directory items matching the query
    */
   async searchFileContents(query: string, maxResults: number = 20): Promise<DirectoryItem[]> {
     if (!this.directoryStructure || !this.currentDirectory || !query.trim()) {
@@ -470,7 +433,7 @@ export class FileService {
       }
     };
     
-    // Faster search using batch processing
+    // Searches for a query in a directory tree
     const searchInTree = async (items: DirectoryItem[]) => {
       const fileBatch: {path: string, item: DirectoryItem}[] = [];
       
@@ -523,7 +486,10 @@ export class FileService {
   }
   
   /**
-   * Find a DirectoryItem by path
+   * Finds a directory item by its path
+   * @param path - Path to find
+   * @param items - Directory items to search
+   * @returns Directory item or null if not found
    */
   private findDirectoryItemByPath(path: string, items: DirectoryItem[]): DirectoryItem | null {
     for (const item of items) {
@@ -543,7 +509,9 @@ export class FileService {
   }
 
   /**
-   * Sprawdza czy plik jest obrazem na podstawie rozszerzenia
+   * Checks if a file is an image
+   * @param filePath - Path to the file
+   * @returns Whether the file is an image
    */
   isImageFile(filePath: string): boolean {
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];

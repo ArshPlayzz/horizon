@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { IconZoomIn, IconZoomOut, IconRotate } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 
 export interface ImageViewerProps {
@@ -28,15 +28,33 @@ export function ImageViewer({ src, alt = "Image", className }: ImageViewerProps)
 
   return (
     <div className={cn("relative w-full h-full", className)}>
-      <div className="absolute top-2 right-2 z-10 flex space-x-2 bg-background/80 p-1 rounded-md backdrop-blur-sm">
-        <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Zoom Out">
-          <ZoomOut className="h-4 w-4" />
+      <div className="absolute bottom-2 -translate-x-1/2 left-1/2 z-10 flex space-x-2 bg-sidebar/80 p-1 rounded-md backdrop-blur-sm border border-sidebar-border/20">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={handleZoomOut} 
+          title="Zoom Out"
+          className="h-6 w-6 hover:bg-sidebar-accent/20"
+        >
+          <IconZoomOut className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Zoom In">
-          <ZoomIn className="h-4 w-4" />
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={handleZoomIn} 
+          title="Zoom In"
+          className="h-6 w-6 hover:bg-sidebar-accent/20"
+        >
+          <IconZoomIn className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleRotate} title="Rotate">
-          <RotateCw className="h-4 w-4" />
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          onClick={handleRotate} 
+          title="Rotate"
+          className="h-6 w-6 hover:bg-sidebar-accent/20"
+        >
+          <IconRotate className="h-4 w-4" />
         </Button>
       </div>
       <ScrollArea className="h-svh relative">

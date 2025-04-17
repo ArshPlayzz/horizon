@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-import { basicSetup } from "codemirror"
 import { EditorState } from "@codemirror/state"
 import { javascript } from "@codemirror/lang-javascript"
 import { cn } from "@/lib/utils"
@@ -27,6 +26,10 @@ import { searchKeymap } from "@codemirror/search"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
 import { ScrollArea } from "./ui/scroll-area"
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
+import { lineNumbers, highlightActiveLineGutter } from "@codemirror/view"
+import { bracketMatching, foldGutter } from "@codemirror/language"
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete"
 
 const shadcnTheme = EditorView.theme({
   "&": {
@@ -131,13 +134,11 @@ export function CodeEditor({
   const initialized = useRef(false);
   const lastSelectionRef = useRef<any>(null);
   
-  // Aktualizujemy zawartość referencji gdy zmienia się initialValue
   useEffect(() => {
     contentRef.current = initialValue;
     
     if (editorViewRef.current && initialized.current) {
       
-      // Aktualizujemy bezpośrednio zawartość zamiast niszczyć i tworzyć na nowo
       const transaction = editorViewRef.current.state.update({
         changes: {
           from: 0, 
@@ -149,11 +150,9 @@ export function CodeEditor({
     }
   }, [initialValue]);
 
-  // Inicjalizacja edytora - tylko raz przy montowaniu lub zmianie języka
   useEffect(() => {
     if (!editorRef.current) return;
         
-    // Niszczymy poprzedni widok jeśli istnieje
     if (editorViewRef.current) {
       editorViewRef.current.destroy();
       editorViewRef.current = null;
@@ -161,7 +160,6 @@ export function CodeEditor({
 
     let langExtension;
     switch (language) {
-      // Web languages
       case "html":
         langExtension = html();
         break;
@@ -183,8 +181,6 @@ export function CodeEditor({
       case "json":
         langExtension = json();
         break;
-        
-      // Backend languages
       case "python":
         langExtension = python();
         break;
@@ -202,8 +198,6 @@ export function CodeEditor({
       case "php":
         langExtension = php();
         break;
-        
-      // Data formats
       case "xml":
         langExtension = xml();
         break;
@@ -214,8 +208,6 @@ export function CodeEditor({
       case "sql":
         langExtension = sql();
         break;
-        
-      // New languages
       case "sass":
         langExtension = sass();
         break;
@@ -226,7 +218,6 @@ export function CodeEditor({
         langExtension = yaml();
         break;
         
-      // Default to TypeScript for unknown languages
       default:
         langExtension = javascript({ typescript: true });
     }
@@ -234,7 +225,12 @@ export function CodeEditor({
     const state = EditorState.create({
       doc: contentRef.current,
       extensions: [
-        basicSetup,
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        history(),
+        foldGutter(),
+        bracketMatching(),
+        closeBrackets(),
         langExtension,
         shadcnTheme,
         syntaxHighlighting(shadcnHighlightStyle),
@@ -247,7 +243,6 @@ export function CodeEditor({
               onChange(newContent);
             }
           }
-          // Store selection when it changes
           if (update.selectionSet) {
             lastSelectionRef.current = update.state.selection;
           }
@@ -255,16 +250,18 @@ export function CodeEditor({
         EditorView.editable.of(!readOnly),
         EditorView.domEventHandlers({
           focus: (_, view) => {
-            // Restore the last selection when focus returns
             if (lastSelectionRef.current) {
               view.dispatch({ selection: lastSelectionRef.current });
             }
           }
         }),
         keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
           ...completionKeymap,
           ...searchKeymap,
           ...lintKeymap,
+          ...closeBracketsKeymap,
           indentWithTab
         ])
       ],

@@ -5,5 +5,5 @@
 
 /// Main function that starts the application
 fn main() {
-    code_editor_lib::run()
+    horizon_lib::run()
 }

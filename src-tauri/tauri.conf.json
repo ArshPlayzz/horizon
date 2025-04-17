@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "code-editor",
+  "productName": "horizon",
   "version": "0.1.0",
-  "identifier": "com.code-editor.app",
+  "identifier": "com.horizon.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "code-editor",
+        "title": "horizon",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

@@ -231,7 +231,7 @@ function MainContent() {
                 
                 <div className="flex flex-1 flex-col rounded-b-xl">
                     <ResizablePanelGroup direction="vertical">
-                        <ResizablePanel defaultSize={60}>
+                        <ResizablePanel defaultSize={isTerminalVisible ? 60 : 100}>
                             {currentFile ? (
                                 isImageFile(currentFile.path) ? (
                                     <ImageViewer src={convertFileSrc(currentFile.path)} />

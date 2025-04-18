@@ -401,13 +401,16 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   
   const hasClipboardContent = clipboard.path !== null && clipboard.type !== null;
   
+  // Effect to load contents when expanded
+  useEffect(() => {
+    if (item.isDirectory && isExpanded && (item.needsLoading || !item.children || item.children.length === 0)) {
+      loadDirectoryContents(item.path, item);
+    }
+  }, [isExpanded, item, loadDirectoryContents]);
+  
   const handleClick = () => {
     if (item.isDirectory) {
       setIsExpanded(!isExpanded);
-      
-      if (item.needsLoading && !isExpanded) {
-        loadDirectoryContents(item.path, item);
-      }
     } else {
       onFileClick(item.path);
     }
@@ -434,6 +437,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     }
     setContextMenuPosition(null);
   };
+  
+  // Determine loading state
+  const isLoading = item.isDirectory && isExpanded && item.needsLoading;
   
   return (
     <div className="pl-1 max-w-[17rem]">
@@ -556,9 +562,13 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
         )}
       </DropdownMenu>
       
-      {item.isDirectory && isExpanded && item.children && (
+      {item.isDirectory && isExpanded && (
         <div className="pl-3">
-          {item.children.length > 0 ? (
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
+              Loading...
+            </div>
+          ) : item.children && item.children.length > 0 ? (
             item.children.map((child) => (
               <DirectoryTree 
                 key={child.path} 
@@ -569,7 +579,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             ))
           ) : (
             <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
-              {item.needsLoading ? 'Loading...' : 'Empty directory'}
+              Empty directory
             </div>
           )}
         </div>

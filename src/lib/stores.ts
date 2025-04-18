@@ -683,6 +683,17 @@ export const useFileStore = create<FileState>((set, get) => {
                           children: [] // Initialize with empty array
                         };
                       }
+                      
+                      // Preserve existing expanded children in the parent directory
+                      const existingChild = currentItem.children?.find(existingItem => existingItem.path === child.path);
+                      if (existingChild && existingChild.children) {
+                        return {
+                          ...child,
+                          children: existingChild.children,
+                          needsLoading: existingChild.needsLoading
+                        };
+                      }
+                      
                       return child;
                     });
                     
@@ -711,6 +722,7 @@ export const useFileStore = create<FileState>((set, get) => {
           }
           
           // Also refresh the entire tree structure after a short delay
+          // Only refresh the structure once instead of twice to avoid race conditions
           await new Promise(resolve => setTimeout(resolve, 500));
           await get().refreshDirectoryStructure();
         } else {
@@ -743,7 +755,41 @@ export const useFileStore = create<FileState>((set, get) => {
         const structure = await fileService.refreshCurrentDirectory();
         if (structure) {
           console.log(`Directory structure refreshed with ${structure.length} root items`);
-          set({ directoryStructure: structure });
+          
+          // Preserve expanded states from the current structure
+          set((state) => {
+            // Function to merge new structure with previous, preserving expanded folders
+            const mergeStructure = (
+              newItems: DirectoryItem[],
+              oldItems: DirectoryItem[] | undefined
+            ): DirectoryItem[] => {
+              if (!oldItems) return newItems;
+              
+              return newItems.map(newItem => {
+                // Find matching item in old structure
+                const oldItem = oldItems.find(item => item.path === newItem.path);
+                
+                if (oldItem && newItem.isDirectory && oldItem.isDirectory) {
+                  // Preserve the children if they exist in the old item and not needsLoading
+                  if (oldItem.children && !oldItem.needsLoading) {
+                    return {
+                      ...newItem,
+                      children: oldItem.children.length > 0 ? 
+                        mergeStructure(newItem.children || [], oldItem.children) : 
+                        newItem.children,
+                      needsLoading: false // If the old item had loaded contents, preserve that
+                    };
+                  }
+                }
+                
+                return newItem;
+              });
+            };
+            
+            return {
+              directoryStructure: mergeStructure(structure, state.directoryStructure)
+            };
+          });
         } else {
           console.error("Failed to refresh directory structure - null result");
         }

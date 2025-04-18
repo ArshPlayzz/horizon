@@ -17,8 +17,7 @@
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
-        "resizable": true
-      }
+        "resizable": true      }
     ],
     "security": {
       "csp": null,
@@ -26,7 +25,8 @@
         "enable": true,
         "scope": ["**/*"]
       }
-    }
+    },
+    "macOSPrivateApi": true
   },
   "plugins": {
     "fs": {

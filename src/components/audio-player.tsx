@@ -36,7 +36,6 @@ export function AudioPlayer({ src, fileName, className }: AudioPlayerProps) {
   const wasPlayingRef = useRef(false);
 
   useEffect(() => {
-    // Only reset if the audio source actually changed
     if (audioRef.current && audioRef.current.src !== src) {
       setCurrentTime(0);
       setIsPlaying(false);

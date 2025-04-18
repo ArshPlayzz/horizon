@@ -15,7 +15,6 @@ interface RenameDialogProps {
 export function RenameDialog({ isOpen, onClose, onRename, itemName, itemType }: RenameDialogProps) {
   const [newName, setNewName] = useState(itemName)
   
-  // Reset the input when the dialog opens with a new item
   useEffect(() => {
     if (isOpen) {
       setNewName(itemName)

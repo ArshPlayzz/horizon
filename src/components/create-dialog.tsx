@@ -15,7 +15,6 @@ interface CreateDialogProps {
 export function CreateDialog({ isOpen, onClose, onCreate, itemType, directoryPath }: CreateDialogProps) {
   const [newName, setNewName] = useState("")
   
-  // Reset the input when the dialog opens
   useEffect(() => {
     if (isOpen) {
       setNewName("")

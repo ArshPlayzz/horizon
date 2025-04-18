@@ -35,9 +35,12 @@ export function FileSelectionTabs() {
                     <span className="ml-1 h-2 w-2 rounded-full bg-primary/70" />
                   )}
                 </div>
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Close tab"
                   className={cn(
-                    "ml-1 rounded-sm p-1 transition-opacity",
+                    "ml-1 rounded-sm p-1 transition-opacity cursor-pointer",
                     isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                     "hover:bg-sidebar-accent/20"
                   )}
@@ -45,9 +48,15 @@ export function FileSelectionTabs() {
                     e.stopPropagation();
                     closeFile(file.path);
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation();
+                      closeFile(file.path);
+                    }
+                  }}
                 >
                   <IconX className="h-4 w-4" />
-                </button>
+                </div>
               </TabsTrigger>
             );
           })}

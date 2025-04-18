@@ -39,7 +39,8 @@ function MainContent() {
         updateFileContent, 
         activeFilePath,
         isImageFile,
-        isAudioFile
+        isAudioFile,
+        saveFile
     } = useFileStore();
     
     const { state: sidebarState } = useSidebar();
@@ -107,6 +108,7 @@ function MainContent() {
         : 'typescript';
     
     const handleContentChange = useCallback((content: string) => {
+        console.log('handleContentChange in App', { contentLength: content.length });
         updateFileContent(content);
     }, [updateFileContent]);
 
@@ -114,30 +116,84 @@ function MainContent() {
         file: FileInfo;
         onChangeContent: (content: string) => void;
         language: string;
+        onSave: () => void;
     }
 
     const MemoizedCodeEditor = memo<MemoizedCodeEditorProps>(
-        ({ file, onChangeContent, language }) => {
+        ({ file, onChangeContent, language, onSave }) => {
+            console.log('MemoizedCodeEditor render', { 
+                filePath: file.path, 
+                language,
+                contentLength: file.content.length,
+                isUnsaved: file.isUnsaved
+            });
+            
+            const fileContentRef = useRef(file.content);
+            const isUnsavedRef = useRef(file.isUnsaved);
+            
+            useEffect(() => {
+                fileContentRef.current = file.content;
+            }, [file.path]);
             
             const handleChange = useCallback((content: string) => {
+                console.log('handleChange in MemoizedCodeEditor', { contentLength: content.length });
+                fileContentRef.current = content;
+                isUnsavedRef.current = true; 
                 onChangeContent(content);
             }, [onChangeContent]);
             
+            const handleSave = useCallback(() => {
+                console.log('handleSave in MemoizedCodeEditor');
+                isUnsavedRef.current = false; 
+                onSave();
+            }, [onSave]);
+            
             return (
                 <CodeEditor 
-                    initialValue={file.content}
+                    initialValue={fileContentRef.current}
                     onChange={handleChange}
                     language={language}
+                    onSave={handleSave}
                 />
             );
         },
         (prevProps, nextProps) => {
-            return (
-                prevProps.file.path === nextProps.file.path &&
-                prevProps.language === nextProps.language
+            const prevInfo = {
+                path: prevProps.file.path,
+                language: prevProps.language,
+                contentLength: prevProps.file.content.length,
+                isUnsaved: prevProps.file.isUnsaved
+            };
+            
+            const nextInfo = {
+                path: nextProps.file.path,
+                language: nextProps.language,
+                contentLength: nextProps.file.content.length,
+                isUnsaved: nextProps.file.isUnsaved
+            };
+            
+            const shouldNotUpdate = (
+                prevInfo.path === nextInfo.path && 
+                prevInfo.language === nextInfo.language
             );
+            
+            console.log('MemoizedCodeEditor memo check', { 
+                shouldNotUpdate, 
+                prevInfo, 
+                nextInfo 
+            });
+            
+            return shouldNotUpdate;
         }
     );
+
+    // Create a save handler function
+    const handleSaveFile = useCallback(() => {
+        if (currentFile) {
+            console.log('Saving file:', currentFile.path);
+            saveFile(currentFile.content);
+        }
+    }, [currentFile, saveFile]);
 
     return (
         <ThemeProvider forceDarkMode={true}>
@@ -175,7 +231,7 @@ function MainContent() {
                 
                 <div className="flex flex-1 flex-col rounded-b-xl">
                     <ResizablePanelGroup direction="vertical">
-                        <ResizablePanel defaultSize={60}>
+                        <ResizablePanel defaultSize={isTerminalVisible ? 60 : 100}>
                             {currentFile ? (
                                 isImageFile(currentFile.path) ? (
                                     <ImageViewer src={convertFileSrc(currentFile.path)} />
@@ -193,6 +249,7 @@ function MainContent() {
                                         file={currentFile}
                                         onChangeContent={handleContentChange}
                                         language={fileLanguage}
+                                        onSave={handleSaveFile}
                                     />
                                 )
                             ) : (

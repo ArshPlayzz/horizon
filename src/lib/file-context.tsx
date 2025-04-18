@@ -8,6 +8,18 @@ interface FileContextType {
   directoryStructure: DirectoryItem[] | undefined;
   currentDirectory: string | null;
   activeFilePath: string | null;
+  clipboard: { type: 'cut' | 'copy' | null, path: string | null };
+  renameDialog: {
+    isOpen: boolean;
+    path: string | null;
+    name: string;
+    isDirectory: boolean;
+  };
+  createDialog: {
+    isOpen: boolean;
+    path: string | null;
+    type: 'file' | 'folder';
+  };
   setActiveFilePath: (path: string | null) => void;
   setCurrentFile: (file: FileInfo | null) => void;
   setCurrentDirectory: (path: string | null) => void;
@@ -24,12 +36,22 @@ interface FileContextType {
   loadDirectoryContents: (dirPath: string, item: DirectoryItem) => Promise<void>;
   closeFile: (filePath: string) => void;
   switchToFile: (filePath: string) => void;
+  handleCut: (path: string) => Promise<void>;
+  handleCopy: (path: string) => Promise<void>;
+  handlePaste: (targetPath: string) => Promise<void>;
   handleRename: (path: string) => Promise<void>;
+  handleRenameSubmit: (newName: string) => Promise<void>;
+  closeRenameDialog: () => void;
   handleDelete: (path: string) => Promise<void>;
   handleCopyPath: (path: string) => Promise<void>;
+  handleCopyRelativePath: (path: string) => Promise<void>;
   handleCreateFile: (path: string) => Promise<void>;
   handleCreateFolder: (path: string) => Promise<void>;
+  openCreateDialog: (path: string, type: 'file' | 'folder') => void;
+  closeCreateDialog: () => void;
+  handleCreateSubmit: (name: string) => Promise<void>;
   setDirectoryStructure: (structure: DirectoryItem[] | undefined) => void;
+  refreshDirectoryStructure: () => Promise<void>;
 }
 
 const FileContext = createContext<FileContextType | null>(null);

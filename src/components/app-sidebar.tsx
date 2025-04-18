@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconSearch, IconX, IconGitBranch, IconFolder, IconPlus, IconFileText, IconFolderPlus, IconCopy, IconTrash, IconEdit, IconScissors } from "@tabler/icons-react"
+import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconSearch, IconX, IconGitBranch, IconFolder, IconFileText, IconFolderPlus, IconCopy, IconTrash, IconEdit, IconScissors, IconClipboard } from "@tabler/icons-react"
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu"
+import { RenameDialog } from "./rename-dialog"
+import { CreateDialog } from "./create-dialog"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toggleSidebar } = useSidebar();
@@ -37,7 +39,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     activeFilePath,
     searchFiles,
     searchFileContents,
-    currentFile
+    currentFile,
+    renameDialog,
+    handleRenameSubmit,
+    closeRenameDialog,
+    createDialog,
+    handleCreateSubmit,
+    closeCreateDialog
   } = useFileContext();
   
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -92,12 +100,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       
       contentResults.forEach(contentItem => {
         if (!combinedResults.some(item => item.path === contentItem.path)) {
-          combinedResults.push(contentItem);
+          combinedResults.push({
+            ...contentItem,
+            name: `${contentItem.name} (match in content)`
+          });
         }
       });
       
       setSearchResults(combinedResults);
     } catch (error) {
+      console.error('Error during search:', error);
     } finally {
       setIsSearching(false);
     }
@@ -142,13 +154,33 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const handleFileClick = async (filePath: string) => {
     try {
-      const file = await openFileFromPath(filePath);
+      await openFileFromPath(filePath);
     } catch (error) {
     }
   };
 
   return (
     <Sidebar {...props}>
+      {renameDialog.isOpen && (
+        <RenameDialog
+          isOpen={renameDialog.isOpen}
+          onClose={closeRenameDialog}
+          onRename={handleRenameSubmit}
+          itemName={renameDialog.name}
+          itemType={renameDialog.isDirectory ? 'folder' : 'file'}
+        />
+      )}
+      
+      {createDialog.isOpen && (
+        <CreateDialog
+          isOpen={createDialog.isOpen}
+          onClose={closeCreateDialog}
+          onCreate={handleCreateSubmit}
+          itemType={createDialog.type}
+          directoryPath={createDialog.path || ''}
+        />
+      )}
+      
       <SidebarContent className="relative w-full h-full bg-sidebar-background select-none">
         <div className="flex h-full">
           <div className="w-12 bg-sidebar-accent/5 border-r border-sidebar-border/20 flex flex-col items-center py-2">
@@ -330,7 +362,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {activeTab === "git" && (
                 <SidebarGroupContent className="relative overflow-hidden h-full">
                   <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
-                    <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                    <div className="mt-2 flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
                       <p className="mb-2">Git integration coming soon</p>
                       <p className="text-xs">This feature will allow you to manage your git repository</p>
                     </div>
@@ -353,7 +385,21 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number, y: number } | null>(null);
-  const { loadDirectoryContents } = useFileContext();
+  const { 
+    loadDirectoryContents,
+    handleCut,
+    handleCopy,
+    handlePaste,
+    handleCopyPath,
+    handleCopyRelativePath,
+    handleRename,
+    handleDelete,
+    handleCreateFile,
+    handleCreateFolder,
+    clipboard
+  } = useFileContext();
+  
+  const hasClipboardContent = clipboard.path !== null && clipboard.type !== null;
   
   const handleClick = () => {
     if (item.isDirectory) {
@@ -373,6 +419,21 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   };
   
   const isActive = activeFilePath === item.path;
+  
+  const handlePasteInFolder = async () => {
+    try {
+      if (item.isDirectory) {
+        handlePaste(item.path);
+      } else {
+        const { dirname } = await import('@tauri-apps/api/path');
+        const parentDir = await dirname(item.path);
+        handlePaste(parentDir);
+      }
+    } catch (error) {
+      console.error('Error during paste operation:', error);
+    }
+    setContextMenuPosition(null);
+  };
   
   return (
     <div className="pl-1 max-w-[17rem]">
@@ -409,11 +470,17 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             {item.isDirectory && (
               <>
                 <DropdownMenuGroup>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => {
+                    handleCreateFile(item.path);
+                    setContextMenuPosition(null);
+                  }}>
                     <IconFileText className="mr-2 h-4 w-4" />
                     <span>New File</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => {
+                    handleCreateFolder(item.path);
+                    setContextMenuPosition(null);
+                  }}>
                     <IconFolderPlus className="mr-2 h-4 w-4" />
                     <span>New Folder</span>
                   </DropdownMenuItem>
@@ -423,24 +490,42 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             )}
             
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                handleCut(item.path);
+                setContextMenuPosition(null);
+              }}>
                 <IconScissors className="mr-2 h-4 w-4" />
                 <span>Cut</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                handleCopy(item.path);
+                setContextMenuPosition(null);
+              }}>
                 <IconCopy className="mr-2 h-4 w-4" />
                 <span>Copy</span>
               </DropdownMenuItem>
+              {hasClipboardContent && (
+                <DropdownMenuItem onSelect={handlePasteInFolder}>
+                  <IconClipboard className="mr-2 h-4 w-4" />
+                  <span>Paste {!item.isDirectory && "in Parent Folder"}</span>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
             
             <DropdownMenuSeparator />
             
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                handleCopyPath(item.path);
+                setContextMenuPosition(null);
+              }}>
                 <IconCopy className="mr-2 h-4 w-4" />
                 <span>Copy Path</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                handleCopyRelativePath(item.path);
+                setContextMenuPosition(null);
+              }}>
                 <IconCopy className="mr-2 h-4 w-4" />
                 <span>Copy Relative Path</span>
               </DropdownMenuItem>
@@ -449,11 +534,20 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             <DropdownMenuSeparator />
             
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                handleRename(item.path);
+                setContextMenuPosition(null);
+              }}>
                 <IconEdit className="mr-2 h-4 w-4" />
                 <span>Rename</span>
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive focus:text-destructive">
+              <DropdownMenuItem 
+                className="text-destructive focus:text-destructive"
+                onSelect={() => {
+                  handleDelete(item.path);
+                  setContextMenuPosition(null);
+                }}
+              >
                 <IconTrash className="mr-2 h-4 w-4" />
                 <span>Delete</span>
               </DropdownMenuItem>

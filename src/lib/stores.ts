@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { FileService, FileInfo, DirectoryItem } from './file-service';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
+import { dirname, basename, join } from '@tauri-apps/api/path';
+import * as nativeFs from './native-fs';
 
 // Audio Store
 interface AudioPlayer {
@@ -64,6 +67,18 @@ interface FileState {
   directoryStructure: DirectoryItem[] | undefined;
   currentDirectory: string | null;
   activeFilePath: string | null;
+  clipboard: { type: 'cut' | 'copy' | null, path: string | null };
+  renameDialog: {
+    isOpen: boolean;
+    path: string | null;
+    name: string;
+    isDirectory: boolean;
+  };
+  createDialog: {
+    isOpen: boolean;
+    path: string | null;
+    type: 'file' | 'folder';
+  };
   setActiveFilePath: (path: string | null) => void;
   setCurrentFile: (file: FileInfo | null) => void;
   setCurrentDirectory: (path: string | null) => void;
@@ -80,12 +95,22 @@ interface FileState {
   loadDirectoryContents: (dirPath: string, item: DirectoryItem) => Promise<void>;
   closeFile: (filePath: string) => void;
   switchToFile: (filePath: string) => void;
+  handleCut: (path: string) => Promise<void>;
+  handleCopy: (path: string) => Promise<void>;
+  handlePaste: (targetPath: string) => Promise<void>;
   handleRename: (path: string) => Promise<void>;
+  handleRenameSubmit: (newName: string) => Promise<void>;
+  closeRenameDialog: () => void;
   handleDelete: (path: string) => Promise<void>;
   handleCopyPath: (path: string) => Promise<void>;
+  handleCopyRelativePath: (path: string) => Promise<void>;
   handleCreateFile: (path: string) => Promise<void>;
   handleCreateFolder: (path: string) => Promise<void>;
+  openCreateDialog: (path: string, type: 'file' | 'folder') => void;
+  closeCreateDialog: () => void;
+  handleCreateSubmit: (name: string) => Promise<void>;
   setDirectoryStructure: (structure: DirectoryItem[] | undefined) => void;
+  refreshDirectoryStructure: () => Promise<void>;
 }
 
 export const useFileStore = create<FileState>((set, get) => {
@@ -125,6 +150,18 @@ export const useFileStore = create<FileState>((set, get) => {
     directoryStructure: undefined,
     currentDirectory: null,
     activeFilePath: null,
+    clipboard: { type: null, path: null },
+    renameDialog: {
+      isOpen: false,
+      path: null,
+      name: '',
+      isDirectory: false
+    },
+    createDialog: {
+      isOpen: false,
+      path: null,
+      type: 'file'
+    },
 
     setActiveFilePath: (path) => set({ activeFilePath: path }),
     setCurrentFile: (file) => set({ currentFile: file }),
@@ -215,8 +252,8 @@ export const useFileStore = create<FileState>((set, get) => {
       }));
     },
 
-    searchFiles: async (_query) => {
-      return [];
+    searchFiles: async (query) => {
+      return fileService.searchFiles(query);
     },
 
     searchFileContents: async (query) => {
@@ -301,28 +338,320 @@ export const useFileStore = create<FileState>((set, get) => {
       });
     },
 
-    handleRename: async (_path) => {
-      // TODO: Implement rename functionality
+    handleCut: async (path) => {
+      set({ clipboard: { type: 'cut', path } });
     },
 
-    handleDelete: async (_path) => {
-      // TODO: Implement delete functionality
+    handleCopy: async (path) => {
+      set({ clipboard: { type: 'copy', path } });
     },
 
-    handleCopyPath: async (_path) => {
-      // TODO: Implement copy path functionality
+    // Note: handlePaste functionality is simplified for this implementation
+    handlePaste: async (targetPath) => {
+      const { clipboard, directoryStructure, currentDirectory } = get();
+      if (!clipboard.path || !clipboard.type || !directoryStructure || !currentDirectory) return;
+
+      try {
+        // Get the basename of the source path
+        const fileName = await basename(clipboard.path);
+        const destinationPath = await join(targetPath, fileName);
+        
+        // Check if the target path already exists
+        const targetExists = await nativeFs.pathExists(destinationPath);
+        if (targetExists) {
+          window.alert(`A file or folder with the name "${fileName}" already exists in the destination.`);
+          return;
+        }
+        
+        // Determine if it's a file or directory
+        const isDirectory = await nativeFs.isDirectory(clipboard.path);
+        
+        if (isDirectory) {
+          // Directory operations are more complex and not fully implemented
+          window.alert("Directory paste operations are not fully implemented yet.");
+          return;
+        } else {
+          // It's a file - copy the file
+          await nativeFs.copyFile(clipboard.path, destinationPath);
+          
+          // If it's a cut operation, delete the source file
+          if (clipboard.type === 'cut') {
+            await nativeFs.deletePath(clipboard.path, false);
+            // Clear clipboard after cut operation
+            set({ clipboard: { type: null, path: null } });
+          }
+        }
+
+        // Refresh directory structure
+        await get().refreshDirectoryStructure();
+      } catch (error) {
+        console.error('Error during paste operation:', error);
+        window.alert(`Error during paste operation: ${error}`);
+      }
     },
 
-    handleCreateFile: async (_path) => {
-      // TODO: Implement create file functionality
+    handleRename: async (path) => {
+      try {
+        const name = await basename(path);
+        const isDirectory = await nativeFs.isDirectory(path);
+        set({
+          renameDialog: {
+            isOpen: true,
+            path,
+            name,
+            isDirectory
+          }
+        });
+      } catch (error) {
+        console.error('Error preparing rename dialog:', error);
+      }
+    },
+    
+    closeRenameDialog: () => {
+      set({
+        renameDialog: {
+          isOpen: false,
+          path: null,
+          name: '',
+          isDirectory: false
+        }
+      });
+    },
+    
+    handleRenameSubmit: async (newName) => {
+      try {
+        const { renameDialog } = get();
+        if (!renameDialog.path || !newName || newName === renameDialog.name) {
+          get().closeRenameDialog();
+          return;
+        }
+        
+        const path = renameDialog.path;
+        const dir = await dirname(path);
+        const newPath = await join(dir, newName);
+        const isDirectory = renameDialog.isDirectory;
+        
+        console.log(`Renaming ${isDirectory ? 'folder' : 'file'}: ${path} to ${newPath}`);
+        
+        // Check if target already exists
+        const targetExists = await nativeFs.pathExists(newPath);
+        if (targetExists) {
+          throw new Error(`A ${isDirectory ? 'folder' : 'file'} with the name "${newName}" already exists.`);
+        }
+        
+        // Use native Rust rename function
+        await nativeFs.renamePath(path, newPath);
+        console.log(`Successfully renamed ${isDirectory ? 'directory' : 'file'}: ${path} to ${newPath}`);
+        
+        // Refresh directory structure
+        await get().refreshDirectoryStructure();
+        
+        // If the renamed file is open, update its path
+        const { openFiles, currentFile } = get();
+        if (!isDirectory && openFiles.some(f => f.path === path)) {
+          set({
+            openFiles: openFiles.map(f => 
+              f.path === path ? { ...f, path: newPath, name: newName } : f
+            ),
+            currentFile: currentFile?.path === path 
+              ? { ...currentFile, path: newPath, name: newName }
+              : currentFile,
+            activeFilePath: get().activeFilePath === path ? newPath : get().activeFilePath
+          });
+        }
+        
+        // Close the rename dialog
+        get().closeRenameDialog();
+      } catch (error: any) {
+        console.error('Error renaming item:', error);
+        // Show error message to user
+        window.alert(`Error renaming: ${error.message || 'Unknown error'}`);
+        get().closeRenameDialog();
+      }
     },
 
-    handleCreateFolder: async (_path) => {
-      // TODO: Implement create folder functionality
+    handleDelete: async (path) => {
+      try {
+        const name = await basename(path);
+        const isDirectory = await nativeFs.isDirectory(path);
+        
+        // Create a promise-based confirmation dialog to properly wait for user input
+        const confirmed = await new Promise<boolean>((resolve) => {
+          // Use requestAnimationFrame to ensure the dialog appears in the next paint cycle
+          requestAnimationFrame(() => {
+            const result = window.confirm(
+              `Are you sure you want to delete ${isDirectory ? 'folder' : 'file'} "${name}"?`
+            );
+            resolve(result);
+          });
+        });
+        
+        if (!confirmed) {
+          console.log('Deletion cancelled by user');
+          return;
+        }
+        
+        console.log(`Deleting ${isDirectory ? 'folder' : 'file'}: ${path}`);
+        
+        // Delete the file or directory
+        await nativeFs.deletePath(path, true);
+        console.log(`Successfully deleted ${isDirectory ? 'directory' : 'file'}: ${path}`);
+        
+        // If the deleted file is open, close it
+        if (get().openFiles.some(f => f.path === path)) {
+          get().closeFile(path);
+        }
+        
+        // Refresh directory structure
+        await get().refreshDirectoryStructure();
+      } catch (error) {
+        console.error('Error deleting item:', error);
+        window.alert(`Error deleting: ${error}`);
+      }
+    },
+
+    handleCopyPath: async (path) => {
+      try {
+        await writeText(path);
+      } catch (error) {
+        console.error('Error copying path to clipboard:', error);
+      }
+    },
+
+    handleCopyRelativePath: async (path) => {
+      try {
+        const { currentDirectory } = get();
+        if (!currentDirectory) return;
+        
+        // Implement a simple relative path calculation since relative is not available
+        let relativePath = path;
+        if (path.startsWith(currentDirectory)) {
+          relativePath = path.substring(currentDirectory.length);
+          // Remove leading slash if present
+          if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+            relativePath = relativePath.substring(1);
+          }
+        }
+        
+        await writeText(relativePath);
+      } catch (error) {
+        console.error('Error copying relative path to clipboard:', error);
+      }
+    },
+
+    openCreateDialog: (path, type) => {
+      console.log(`openCreateDialog called with type: ${type} and path: ${path}`);
+      set({
+        createDialog: {
+          isOpen: true,
+          path,
+          type
+        }
+      });
+    },
+    
+    closeCreateDialog: () => {
+      const currentType = get().createDialog.type;
+      console.log(`closeCreateDialog called, preserving type: ${currentType}`);
+      set({
+        createDialog: {
+          isOpen: false,
+          path: null,
+          type: currentType
+        }
+      });
+    },
+    
+    handleCreateSubmit: async (name) => {
+      try {
+        const { createDialog } = get();
+        if (!createDialog.path || !name) {
+          get().closeCreateDialog();
+          return;
+        }
+        
+        const path = createDialog.path;
+        const itemType = createDialog.type;
+        console.log(`Attempting to create ${itemType} with name "${name}" in path "${path}"`);
+        
+        if (itemType === 'file') {
+          // Create a file using native Rust implementation
+          const filePath = await join(path, name);
+          
+          // Check if file already exists
+          const fileExists = await nativeFs.pathExists(filePath);
+          if (fileExists) {
+            throw new Error(`A file with the name "${name}" already exists.`);
+          }
+          
+          // Create an empty file
+          await nativeFs.createFile(filePath, '');
+          console.log(`Successfully created file: ${filePath}`);
+          
+          // Refresh directory structure
+          await get().refreshDirectoryStructure();
+          
+          // Open the newly created file
+          await get().openFileFromPath(filePath);
+        } else if (itemType === 'folder') {
+          // Create a folder using native Rust implementation
+          const folderPath = await join(path, name);
+          
+          // Check if folder already exists
+          const folderExists = await nativeFs.pathExists(folderPath);
+          if (folderExists) {
+            throw new Error(`A folder with the name "${name}" already exists.`);
+          }
+          
+          // Create the directory using native Rust implementation
+          console.log(`Creating folder at path: ${folderPath}`);
+          await nativeFs.createDirectory(folderPath);
+          console.log(`Successfully created folder: ${folderPath}`);
+          
+          // Refresh directory structure with delay to ensure FS operations complete
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await get().refreshDirectoryStructure();
+        } else {
+          throw new Error(`Unknown item type: ${itemType}`);
+        }
+        
+        // Close the create dialog
+        get().closeCreateDialog();
+      } catch (error) {
+        console.error('Error creating item:', error);
+        window.alert(`Error creating ${get().createDialog.type}: ${error}`);
+      }
+    },
+    
+    handleCreateFile: async (dirPath) => {
+      // Open the create dialog for file creation
+      get().openCreateDialog(dirPath, 'file');
+    },
+
+    handleCreateFolder: async (dirPath) => {
+      // Open the create dialog for folder creation
+      console.log(`handleCreateFolder called for path: ${dirPath}`);
+      get().openCreateDialog(dirPath, 'folder');
     },
 
     setDirectoryStructure: (structure) => {
       set({ directoryStructure: structure });
+    },
+    
+    refreshDirectoryStructure: async () => {
+      try {
+        console.log("Refreshing directory structure...");
+        // Use the new refreshCurrentDirectory method instead of openDirectory
+        const structure = await fileService.refreshCurrentDirectory();
+        if (structure) {
+          console.log(`Directory structure refreshed with ${structure.length} root items`);
+          set({ directoryStructure: structure });
+        } else {
+          console.error("Failed to refresh directory structure - null result");
+        }
+      } catch (error) {
+        console.error('Error refreshing directory structure:', error);
+      }
     }
   };
 }); 

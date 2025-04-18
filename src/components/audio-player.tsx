@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { useAudioContext } from '@/lib/audio-context';
+import { useAudioStore } from '@/lib/stores';
 
 export interface AudioPlayerProps {
   src: string;
@@ -23,7 +23,7 @@ export interface AudioPlayerProps {
 
 export function AudioPlayer({ src, fileName, className }: AudioPlayerProps) {
   const playerId = useId();
-  const { activePlayerId, registerPlayer, unregisterPlayer, setActivePlayer, pauseAllExcept } = useAudioContext();
+  const { activePlayerId, registerPlayer, unregisterPlayer, setActivePlayer, pauseAllExcept } = useAudioStore();
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -36,6 +36,7 @@ export function AudioPlayer({ src, fileName, className }: AudioPlayerProps) {
   const wasPlayingRef = useRef(false);
 
   useEffect(() => {
+    // Only reset if the audio source actually changed
     if (audioRef.current && audioRef.current.src !== src) {
       setCurrentTime(0);
       setIsPlaying(false);

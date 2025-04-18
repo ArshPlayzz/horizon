@@ -7,7 +7,6 @@ import {
     useSidebar
 } from "@/components/ui/sidebar"
 import { CodeEditor } from "./components/code-editor"
-import { FileContextProvider, useFileContext } from "./lib/file-context"
 import { FileInfo } from "./lib/file-service"
 import { ImageViewer } from "@/components/image-viewer"
 import { convertFileSrc } from "@tauri-apps/api/core"
@@ -16,8 +15,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { FileSelectionTabs } from "@/components/ui/file-selection-tabs"
 import { IconLayoutSidebar, IconLayoutBottombar, IconLayoutSidebarFilled, IconLayoutBottombarFilled } from "@tabler/icons-react"
-import { AudioPlayer } from "@/components/audio-player"
-import { AudioContextProvider } from "@/lib/audio-context"
+import { AudioPlayer } from "@/components/audio-player.tsx"
+import { useFileStore } from "@/lib/stores"
 
 interface TerminalInstance {
   id: string;
@@ -41,7 +40,7 @@ function MainContent() {
         activeFilePath,
         isImageFile,
         isAudioFile
-    } = useFileContext();
+    } = useFileStore();
     
     const { state: sidebarState } = useSidebar();
     const prevFilePathRef = useRef<string | null>(null);
@@ -181,10 +180,13 @@ function MainContent() {
                                 isImageFile(currentFile.path) ? (
                                     <ImageViewer src={convertFileSrc(currentFile.path)} />
                                 ) : isAudioFile(currentFile.path) ? (
-                                    <AudioPlayer 
-                                        src={convertFileSrc(currentFile.path)} 
-                                        fileName={currentFile.name}
-                                    />
+                                    <div className="h-full">
+                                        <AudioPlayer 
+                                            key={currentFile.path}
+                                            src={convertFileSrc(currentFile.path)} 
+                                            fileName={currentFile.name}
+                                        />
+                                    </div>
                                 ) : (
                                     <MemoizedCodeEditor
                                         key={activeFilePath}
@@ -227,12 +229,8 @@ function MainContent() {
 
 export default function App() {
     return (
-        <AudioContextProvider>
-            <FileContextProvider>
-                <SidebarProvider>
-                    <MainContent />
-                </SidebarProvider>
-            </FileContextProvider>
-        </AudioContextProvider>
+        <SidebarProvider>
+            <MainContent />
+        </SidebarProvider>
     );
 }

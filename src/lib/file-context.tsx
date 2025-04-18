@@ -28,6 +28,7 @@ interface FileContextType {
   handleCopyPath: (path: string) => Promise<void>;
   handleCreateFile: (path: string) => Promise<void>;
   handleCreateFolder: (path: string) => Promise<void>;
+  isAudioFile: (filePath: string) => boolean;
 }
 
 /**
@@ -330,10 +331,19 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
   };
 
   /**
+   * Checks if a file is an audio
+   * @param filePath - Path to the file
+   * @returns Whether the file is an audio
+   */
+  const isAudioFile = (filePath: string): boolean => {
+    return fileService.isAudioFile(filePath);
+  };
+
+  /**
    * Handles renaming a file or directory
    * @param path - Path to the file or directory
    */
-  const handleRename = async (path: string) => {
+  const handleRename = async (_path: string) => {
     // TODO: Implement rename functionality
   };
 
@@ -341,7 +351,7 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
    * Handles deleting a file or directory
    * @param path - Path to the file or directory
    */
-  const handleDelete = async (path: string) => {
+  const handleDelete = async (_path: string) => {
     // TODO: Implement delete functionality
   };
 
@@ -357,7 +367,7 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
    * Creates a new file
    * @param path - Path for the new file
    */
-  const handleCreateFile = async (path: string) => {
+  const handleCreateFile = async (_path: string) => {
     // TODO: Implement create file functionality
   };
 
@@ -365,7 +375,7 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
    * Creates a new folder
    * @param path - Path for the new folder
    */
-  const handleCreateFolder = async (path: string) => {
+  const handleCreateFolder = async (_path: string) => {
     // TODO: Implement create folder functionality
   };
 
@@ -397,6 +407,7 @@ export function FileContextProvider({ children }: { children: ReactNode }) {
     handleCopyPath,
     handleCreateFile,
     handleCreateFolder,
+    isAudioFile,
   };
 
   return (

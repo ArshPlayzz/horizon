@@ -16,6 +16,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { FileSelectionTabs } from "@/components/ui/file-selection-tabs"
 import { IconLayoutSidebar, IconLayoutBottombar, IconLayoutSidebarFilled, IconLayoutBottombarFilled } from "@tabler/icons-react"
+import { AudioPlayer } from "@/components/audio-player"
+import { AudioContextProvider } from "@/lib/audio-context"
 
 interface TerminalInstance {
   id: string;
@@ -37,7 +39,8 @@ function MainContent() {
         currentFile, 
         updateFileContent, 
         activeFilePath,
-        isImageFile
+        isImageFile,
+        isAudioFile
     } = useFileContext();
     
     const { state: sidebarState } = useSidebar();
@@ -177,13 +180,18 @@ function MainContent() {
                             {currentFile ? (
                                 isImageFile(currentFile.path) ? (
                                     <ImageViewer src={convertFileSrc(currentFile.path)} />
+                                ) : isAudioFile(currentFile.path) ? (
+                                    <AudioPlayer 
+                                        src={convertFileSrc(currentFile.path)} 
+                                        fileName={currentFile.name}
+                                    />
                                 ) : (
                                     <MemoizedCodeEditor
-                                            key={activeFilePath}
-                                            file={currentFile}
-                                            onChangeContent={handleContentChange}
-                                            language={fileLanguage}
-                                        />
+                                        key={activeFilePath}
+                                        file={currentFile}
+                                        onChangeContent={handleContentChange}
+                                        language={fileLanguage}
+                                    />
                                 )
                             ) : (
                                 <div className="flex h-full items-center justify-center">
@@ -219,10 +227,12 @@ function MainContent() {
 
 export default function App() {
     return (
-        <FileContextProvider>
-            <SidebarProvider>
-                <MainContent />
-            </SidebarProvider>
-        </FileContextProvider>
+        <AudioContextProvider>
+            <FileContextProvider>
+                <SidebarProvider>
+                    <MainContent />
+                </SidebarProvider>
+            </FileContextProvider>
+        </AudioContextProvider>
     );
 }

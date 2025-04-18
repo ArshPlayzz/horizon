@@ -52,6 +52,7 @@ export class FileService {
         filters: [
           { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
           { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'] },
+          { name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -517,5 +518,16 @@ export class FileService {
     const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'];
     const extension = filePath.split('.').pop()?.toLowerCase() || '';
     return imageExtensions.includes(extension);
+  }
+
+  /**
+   * Checks if a file is an audio file
+   * @param filePath - Path to the file
+   * @returns Whether the file is an audio file
+   */
+  isAudioFile(filePath: string): boolean {
+    const audioExtensions = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'];
+    const extension = filePath.split('.').pop()?.toLowerCase() || '';
+    return audioExtensions.includes(extension);
   }
 }

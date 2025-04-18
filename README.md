@@ -143,19 +143,30 @@ npm run tauri build
   - `terminal.rs` - Terminal management
   - `process_tracker.rs` - Process tracking
 
-## TODO List
+## Roadmap
 
 ### High Priority
-- [ ] Implement Git integration
-- [ ] Add settings panel
-- [ ] Implement extension system
-- [ ] Add debugging support
+- [ ] LSP Server integration for enhanced language support
+- [ ] Git integration with full GitHub support
+- [ ] Settings panel with comprehensive configuration options
+- [ ] Extensions and plugins system
+- [ ] GitHub Actions autobuild pipeline
+
+### Medium Priority
+- [ ] AI-powered chat assistant for code help
+- [ ] Debugging support with breakpoints and variable inspection
+- [ ] Code analysis tools for better code quality
+- [ ] Linting and Prettier integration
+- [ ] Multiplayer collaboration features
+- [ ] Integrated project management system - Not just a code editor, but also a tool for task and project management
+- [ ] Advanced data visualization - Interactive charts, data structure visualizations, integrated notebooks
+- [ ] Code presentation mode - Features that facilitate presenting and discussing code during meetings or recordings
 
 ### Low Priority
-- [ ] Add more themes
-- [ ] Add plugin system
-- [ ] Implement code analysis
-- [ ] Add code refactoring tools
+- [ ] Additional theme support and customization
+- [ ] Advanced code refactoring tools
+- [ ] Performance optimization
+- [ ] Documentation improvements
 
 ## Contributing
 

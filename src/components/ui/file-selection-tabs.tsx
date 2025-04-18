@@ -37,7 +37,7 @@ export function FileSelectionTabs() {
                 </div>
                 <button
                   className={cn(
-                    "ml-1 rounded-sm p-1 transition-opacity",
+                    "ml-1 rounded-sm p-1 transition-opacity cursor-pointer",
                     isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                     "hover:bg-sidebar-accent/20"
                   )}

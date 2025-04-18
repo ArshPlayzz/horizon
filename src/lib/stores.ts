@@ -208,18 +208,56 @@ export const useFileStore = create<FileState>((set, get) => {
 
     saveFile: async (content) => {
       try {
+        console.log('saveFile in store started', { contentLength: content.length });
+        
+        // Get the current state
+        const { currentFile, openFiles } = get();
+        if (!currentFile) {
+          console.log('No current file to save');
+          return null;
+        }
+        
+        // Only save if content matches what we have in our store
+        if (currentFile.content !== content) {
+          console.log('Content mismatch, updating content before saving');
+          currentFile.content = content;
+        }
+        
         const file = await fileService.saveFile(content, false);
         if (file) {
-          file.isUnsaved = false;
-          set((state) => ({
-            currentFile: file,
-            openFiles: state.openFiles.map(f =>
-              f.path === file.path ? { ...f, isUnsaved: false } : f
-            )
-          }));
+          console.log('File saved by fileService, updating state', {
+            path: file.path,
+            contentLength: file.content.length
+          });
+          
+          // Set the file as not unsaved without triggering unnecessary re-renders
+          currentFile.isUnsaved = false;
+          
+          // Check if we need to update the store state (only if openFiles refs weren't updated)
+          const needsStateUpdate = openFiles.some(f => 
+            f.path === file.path && f.isUnsaved === true
+          );
+          
+          if (needsStateUpdate) {
+            console.log('Updating store state to mark file as saved');
+            set((state) => {
+              // Use functional update to avoid unnecessary re-renders
+              // Only update the isUnsaved flag, don't replace file objects entirely
+              return {
+                openFiles: state.openFiles.map(f =>
+                  f.path === file.path ? { ...f, isUnsaved: false } : f
+                )
+              };
+            });
+          } else {
+            console.log('No state update needed, file already marked as saved');
+          }
         }
+        
+        console.log('saveFile in store completed');
         return file;
       } catch (error) {
+        console.error('Error in saveFile:', error);
         return null;
       }
     },
@@ -237,19 +275,32 @@ export const useFileStore = create<FileState>((set, get) => {
     },
 
     updateFileContent: (content) => {
-      const { currentFile } = get();
+      const { currentFile, openFiles } = get();
       if (!currentFile) return;
 
       currentFile.content = content;
       currentFile.isUnsaved = true;
 
-      set((state) => ({
-        openFiles: state.openFiles.map(file =>
-          file.path === currentFile.path
-            ? { ...file, content, isUnsaved: true }
-            : file
-        )
-      }));
+      const existingFile = openFiles.find(file => file.path === currentFile.path);
+      const needsUpdate = !existingFile || !existingFile.isUnsaved || existingFile.content !== content;
+      
+      if (needsUpdate) {
+        set((state) => {
+          const fileInState = state.openFiles.find(f => f.path === currentFile.path);
+          
+          if (!fileInState || !fileInState.isUnsaved || fileInState.content !== content) {
+            return {
+              openFiles: state.openFiles.map(file =>
+                file.path === currentFile.path
+                  ? { ...file, content, isUnsaved: true }
+                  : file
+              )
+            };
+          }
+          
+          return state;
+        });
+      }
     },
 
     searchFiles: async (query) => {
@@ -346,43 +397,34 @@ export const useFileStore = create<FileState>((set, get) => {
       set({ clipboard: { type: 'copy', path } });
     },
 
-    // Note: handlePaste functionality is simplified for this implementation
     handlePaste: async (targetPath) => {
       const { clipboard, directoryStructure, currentDirectory } = get();
       if (!clipboard.path || !clipboard.type || !directoryStructure || !currentDirectory) return;
 
       try {
-        // Get the basename of the source path
         const fileName = await basename(clipboard.path);
         const destinationPath = await join(targetPath, fileName);
         
-        // Check if the target path already exists
         const targetExists = await nativeFs.pathExists(destinationPath);
         if (targetExists) {
           window.alert(`A file or folder with the name "${fileName}" already exists in the destination.`);
           return;
         }
         
-        // Determine if it's a file or directory
         const isDirectory = await nativeFs.isDirectory(clipboard.path);
         
         if (isDirectory) {
-          // Directory operations are more complex and not fully implemented
           window.alert("Directory paste operations are not fully implemented yet.");
           return;
         } else {
-          // It's a file - copy the file
           await nativeFs.copyFile(clipboard.path, destinationPath);
           
-          // If it's a cut operation, delete the source file
           if (clipboard.type === 'cut') {
             await nativeFs.deletePath(clipboard.path, false);
-            // Clear clipboard after cut operation
             set({ clipboard: { type: null, path: null } });
           }
         }
 
-        // Refresh directory structure
         await get().refreshDirectoryStructure();
       } catch (error) {
         console.error('Error during paste operation:', error);
@@ -431,22 +473,16 @@ export const useFileStore = create<FileState>((set, get) => {
         const newPath = await join(dir, newName);
         const isDirectory = renameDialog.isDirectory;
         
-        console.log(`Renaming ${isDirectory ? 'folder' : 'file'}: ${path} to ${newPath}`);
         
-        // Check if target already exists
         const targetExists = await nativeFs.pathExists(newPath);
         if (targetExists) {
           throw new Error(`A ${isDirectory ? 'folder' : 'file'} with the name "${newName}" already exists.`);
         }
         
-        // Use native Rust rename function
         await nativeFs.renamePath(path, newPath);
-        console.log(`Successfully renamed ${isDirectory ? 'directory' : 'file'}: ${path} to ${newPath}`);
         
-        // Refresh directory structure
         await get().refreshDirectoryStructure();
         
-        // If the renamed file is open, update its path
         const { openFiles, currentFile } = get();
         if (!isDirectory && openFiles.some(f => f.path === path)) {
           set({
@@ -460,7 +496,6 @@ export const useFileStore = create<FileState>((set, get) => {
           });
         }
         
-        // Close the rename dialog
         get().closeRenameDialog();
       } catch (error: any) {
         console.error('Error renaming item:', error);
@@ -475,9 +510,7 @@ export const useFileStore = create<FileState>((set, get) => {
         const name = await basename(path);
         const isDirectory = await nativeFs.isDirectory(path);
         
-        // Create a promise-based confirmation dialog to properly wait for user input
         const confirmed = await new Promise<boolean>((resolve) => {
-          // Use requestAnimationFrame to ensure the dialog appears in the next paint cycle
           requestAnimationFrame(() => {
             const result = window.confirm(
               `Are you sure you want to delete ${isDirectory ? 'folder' : 'file'} "${name}"?`
@@ -491,18 +524,13 @@ export const useFileStore = create<FileState>((set, get) => {
           return;
         }
         
-        console.log(`Deleting ${isDirectory ? 'folder' : 'file'}: ${path}`);
         
-        // Delete the file or directory
         await nativeFs.deletePath(path, true);
-        console.log(`Successfully deleted ${isDirectory ? 'directory' : 'file'}: ${path}`);
         
-        // If the deleted file is open, close it
         if (get().openFiles.some(f => f.path === path)) {
           get().closeFile(path);
         }
         
-        // Refresh directory structure
         await get().refreshDirectoryStructure();
       } catch (error) {
         console.error('Error deleting item:', error);
@@ -523,11 +551,9 @@ export const useFileStore = create<FileState>((set, get) => {
         const { currentDirectory } = get();
         if (!currentDirectory) return;
         
-        // Implement a simple relative path calculation since relative is not available
         let relativePath = path;
         if (path.startsWith(currentDirectory)) {
           relativePath = path.substring(currentDirectory.length);
-          // Remove leading slash if present
           if (relativePath.startsWith('/') || relativePath.startsWith('\\')) {
             relativePath = relativePath.substring(1);
           }
@@ -575,47 +601,37 @@ export const useFileStore = create<FileState>((set, get) => {
         console.log(`Attempting to create ${itemType} with name "${name}" in path "${path}"`);
         
         if (itemType === 'file') {
-          // Create a file using native Rust implementation
           const filePath = await join(path, name);
           
-          // Check if file already exists
           const fileExists = await nativeFs.pathExists(filePath);
           if (fileExists) {
             throw new Error(`A file with the name "${name}" already exists.`);
           }
           
-          // Create an empty file
           await nativeFs.createFile(filePath, '');
           console.log(`Successfully created file: ${filePath}`);
           
-          // Refresh directory structure
           await get().refreshDirectoryStructure();
           
-          // Open the newly created file
           await get().openFileFromPath(filePath);
         } else if (itemType === 'folder') {
-          // Create a folder using native Rust implementation
           const folderPath = await join(path, name);
           
-          // Check if folder already exists
           const folderExists = await nativeFs.pathExists(folderPath);
           if (folderExists) {
             throw new Error(`A folder with the name "${name}" already exists.`);
           }
           
-          // Create the directory using native Rust implementation
           console.log(`Creating folder at path: ${folderPath}`);
           await nativeFs.createDirectory(folderPath);
           console.log(`Successfully created folder: ${folderPath}`);
           
-          // Refresh directory structure with delay to ensure FS operations complete
           await new Promise(resolve => setTimeout(resolve, 500));
           await get().refreshDirectoryStructure();
         } else {
           throw new Error(`Unknown item type: ${itemType}`);
         }
         
-        // Close the create dialog
         get().closeCreateDialog();
       } catch (error) {
         console.error('Error creating item:', error);
@@ -624,12 +640,10 @@ export const useFileStore = create<FileState>((set, get) => {
     },
     
     handleCreateFile: async (dirPath) => {
-      // Open the create dialog for file creation
       get().openCreateDialog(dirPath, 'file');
     },
 
     handleCreateFolder: async (dirPath) => {
-      // Open the create dialog for folder creation
       console.log(`handleCreateFolder called for path: ${dirPath}`);
       get().openCreateDialog(dirPath, 'folder');
     },
@@ -641,7 +655,6 @@ export const useFileStore = create<FileState>((set, get) => {
     refreshDirectoryStructure: async () => {
       try {
         console.log("Refreshing directory structure...");
-        // Use the new refreshCurrentDirectory method instead of openDirectory
         const structure = await fileService.refreshCurrentDirectory();
         if (structure) {
           console.log(`Directory structure refreshed with ${structure.length} root items`);

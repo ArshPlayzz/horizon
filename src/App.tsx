@@ -107,6 +107,7 @@ function MainContent() {
         : 'typescript';
     
     const handleContentChange = useCallback((content: string) => {
+        console.log('handleContentChange in App', { contentLength: content.length });
         updateFileContent(content);
     }, [updateFileContent]);
 
@@ -114,28 +115,80 @@ function MainContent() {
         file: FileInfo;
         onChangeContent: (content: string) => void;
         language: string;
+        onSave: () => void;
     }
 
     const MemoizedCodeEditor = memo<MemoizedCodeEditorProps>(
-        ({ file, onChangeContent, language }) => {
+        ({ file, onChangeContent, language, onSave }) => {
+            console.log('MemoizedCodeEditor render', { 
+                filePath: file.path, 
+                language,
+                contentLength: file.content.length,
+                isUnsaved: file.isUnsaved
+            });
+            
+            const fileContentRef = useRef(file.content);
+            // Store the unsaved state to avoid re-renders when it changes
+            const isUnsavedRef = useRef(file.isUnsaved);
+            
+            useEffect(() => {
+                fileContentRef.current = file.content;
+                // Don't update isUnsavedRef here to prevent re-render cycle
+            }, [file.path]);
             
             const handleChange = useCallback((content: string) => {
+                console.log('handleChange in MemoizedCodeEditor', { contentLength: content.length });
+                fileContentRef.current = content;
+                isUnsavedRef.current = true; // Mark as unsaved locally
                 onChangeContent(content);
             }, [onChangeContent]);
             
+            // Create a wrapped save handler that maintains focus
+            const handleSave = useCallback(() => {
+                console.log('handleSave in MemoizedCodeEditor');
+                isUnsavedRef.current = false; // Mark as saved locally
+                onSave();
+            }, [onSave]);
+            
             return (
                 <CodeEditor 
-                    initialValue={file.content}
+                    initialValue={fileContentRef.current}
                     onChange={handleChange}
                     language={language}
+                    onSave={handleSave}
                 />
             );
         },
         (prevProps, nextProps) => {
-            return (
-                prevProps.file.path === nextProps.file.path &&
-                prevProps.language === nextProps.language
+            // Capture previous states for logging
+            const prevInfo = {
+                path: prevProps.file.path,
+                language: prevProps.language,
+                contentLength: prevProps.file.content.length,
+                isUnsaved: prevProps.file.isUnsaved
+            };
+            
+            const nextInfo = {
+                path: nextProps.file.path,
+                language: nextProps.language,
+                contentLength: nextProps.file.content.length,
+                isUnsaved: nextProps.file.isUnsaved
+            };
+            
+            // Only re-render if file path or language changes
+            // Explicitly ignore content changes and isUnsaved changes which cause focus issues
+            const shouldNotUpdate = (
+                prevInfo.path === nextInfo.path && 
+                prevInfo.language === nextInfo.language
             );
+            
+            console.log('MemoizedCodeEditor memo check', { 
+                shouldNotUpdate, 
+                prevInfo, 
+                nextInfo 
+            });
+            
+            return shouldNotUpdate;
         }
     );
 
@@ -193,6 +246,7 @@ function MainContent() {
                                         file={currentFile}
                                         onChangeContent={handleContentChange}
                                         language={fileLanguage}
+                                        onSave={() => {}}
                                     />
                                 )
                             ) : (

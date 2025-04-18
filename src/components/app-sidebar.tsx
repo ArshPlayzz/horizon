@@ -568,15 +568,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
               />
             ))
           ) : (
-            item.needsLoading ? (
-              <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
-                Loading...
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
-                Empty directory
-              </div>
-            )
+            <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
+              {item.needsLoading ? 'Loading...' : 'Empty directory'}
+            </div>
           )}
         </div>
       )}

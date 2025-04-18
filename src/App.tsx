@@ -39,7 +39,8 @@ function MainContent() {
         updateFileContent, 
         activeFilePath,
         isImageFile,
-        isAudioFile
+        isAudioFile,
+        saveFile
     } = useFileStore();
     
     const { state: sidebarState } = useSidebar();
@@ -186,6 +187,14 @@ function MainContent() {
         }
     );
 
+    // Create a save handler function
+    const handleSaveFile = useCallback(() => {
+        if (currentFile) {
+            console.log('Saving file:', currentFile.path);
+            saveFile(currentFile.content);
+        }
+    }, [currentFile, saveFile]);
+
     return (
         <ThemeProvider forceDarkMode={true}>
             <AppSidebar variant="inset"/>
@@ -240,7 +249,7 @@ function MainContent() {
                                         file={currentFile}
                                         onChangeContent={handleContentChange}
                                         language={fileLanguage}
-                                        onSave={() => {}}
+                                        onSave={handleSaveFile}
                                     />
                                 )
                             ) : (

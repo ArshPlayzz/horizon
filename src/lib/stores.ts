@@ -333,7 +333,8 @@ export const useFileStore = create<FileState>((set, get) => {
                 if (currentItem.path === item.path) {
                   return {
                     ...currentItem,
-                    children: contents
+                    children: contents,
+                    needsLoading: false
                   };
                 }
 
@@ -611,6 +612,42 @@ export const useFileStore = create<FileState>((set, get) => {
           await nativeFs.createFile(filePath, '');
           console.log(`Successfully created file: ${filePath}`);
           
+          // First refresh just the parent directory
+          const parentContents = await fileService.loadDirectoryContents(path);
+          if (parentContents) {
+            set((state) => {
+              const updateDirectoryStructure = (
+                items: DirectoryItem[] | undefined
+              ): DirectoryItem[] | undefined => {
+                if (!items) return undefined;
+
+                return items.map((currentItem) => {
+                  if (currentItem.path === path) {
+                    return {
+                      ...currentItem,
+                      children: parentContents,
+                      needsLoading: false
+                    };
+                  }
+
+                  if (currentItem.children) {
+                    return {
+                      ...currentItem,
+                      children: updateDirectoryStructure(currentItem.children)
+                    };
+                  }
+
+                  return currentItem;
+                });
+              };
+
+              return {
+                directoryStructure: updateDirectoryStructure(state.directoryStructure)
+              };
+            });
+          }
+          
+          // Also refresh the entire tree structure
           await get().refreshDirectoryStructure();
           
           await get().openFileFromPath(filePath);
@@ -626,6 +663,54 @@ export const useFileStore = create<FileState>((set, get) => {
           await nativeFs.createDirectory(folderPath);
           console.log(`Successfully created folder: ${folderPath}`);
           
+          // First refresh just the parent directory
+          const parentContents = await fileService.loadDirectoryContents(path);
+          if (parentContents) {
+            set((state) => {
+              const updateDirectoryStructure = (
+                items: DirectoryItem[] | undefined
+              ): DirectoryItem[] | undefined => {
+                if (!items) return undefined;
+
+                return items.map((currentItem) => {
+                  if (currentItem.path === path) {
+                    // Find the newly created folder in parent contents and ensure needsLoading is false
+                    const updatedContents = parentContents.map(child => {
+                      if (child.path === folderPath && child.isDirectory) {
+                        return {
+                          ...child,
+                          needsLoading: false,
+                          children: [] // Initialize with empty array
+                        };
+                      }
+                      return child;
+                    });
+                    
+                    return {
+                      ...currentItem,
+                      children: updatedContents,
+                      needsLoading: false
+                    };
+                  }
+
+                  if (currentItem.children) {
+                    return {
+                      ...currentItem,
+                      children: updateDirectoryStructure(currentItem.children)
+                    };
+                  }
+
+                  return currentItem;
+                });
+              };
+
+              return {
+                directoryStructure: updateDirectoryStructure(state.directoryStructure)
+              };
+            });
+          }
+          
+          // Also refresh the entire tree structure after a short delay
           await new Promise(resolve => setTimeout(resolve, 500));
           await get().refreshDirectoryStructure();
         } else {

@@ -7,7 +7,6 @@ import {
     useSidebar
 } from "@/components/ui/sidebar"
 import { CodeEditor } from "./components/code-editor"
-import { FileContextProvider, useFileContext } from "./lib/file-context"
 import { FileInfo } from "./lib/file-service"
 import { ImageViewer } from "@/components/image-viewer"
 import { convertFileSrc } from "@tauri-apps/api/core"
@@ -16,6 +15,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { Button } from "@/components/ui/button"
 import { FileSelectionTabs } from "@/components/ui/file-selection-tabs"
 import { IconLayoutSidebar, IconLayoutBottombar, IconLayoutSidebarFilled, IconLayoutBottombarFilled } from "@tabler/icons-react"
+import { AudioPlayer } from "@/components/audio-player.tsx"
+import { useFileStore } from "@/lib/stores"
 
 interface TerminalInstance {
   id: string;
@@ -37,8 +38,9 @@ function MainContent() {
         currentFile, 
         updateFileContent, 
         activeFilePath,
-        isImageFile
-    } = useFileContext();
+        isImageFile,
+        isAudioFile
+    } = useFileStore();
     
     const { state: sidebarState } = useSidebar();
     const prevFilePathRef = useRef<string | null>(null);
@@ -177,13 +179,21 @@ function MainContent() {
                             {currentFile ? (
                                 isImageFile(currentFile.path) ? (
                                     <ImageViewer src={convertFileSrc(currentFile.path)} />
+                                ) : isAudioFile(currentFile.path) ? (
+                                    <div className="h-full">
+                                        <AudioPlayer 
+                                            key={currentFile.path}
+                                            src={convertFileSrc(currentFile.path)} 
+                                            fileName={currentFile.name}
+                                        />
+                                    </div>
                                 ) : (
                                     <MemoizedCodeEditor
-                                            key={activeFilePath}
-                                            file={currentFile}
-                                            onChangeContent={handleContentChange}
-                                            language={fileLanguage}
-                                        />
+                                        key={activeFilePath}
+                                        file={currentFile}
+                                        onChangeContent={handleContentChange}
+                                        language={fileLanguage}
+                                    />
                                 )
                             ) : (
                                 <div className="flex h-full items-center justify-center">
@@ -219,10 +229,8 @@ function MainContent() {
 
 export default function App() {
     return (
-        <FileContextProvider>
-            <SidebarProvider>
-                <MainContent />
-            </SidebarProvider>
-        </FileContextProvider>
+        <SidebarProvider>
+            <MainContent />
+        </SidebarProvider>
     );
 }

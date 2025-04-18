@@ -13,12 +13,22 @@
     "fs:write-files",
     "fs:read-dirs",
     "fs:allow-mkdir",
-    "fs:scope",
+    "fs:allow-rename",
+    "fs:allow-remove",
+    "fs:allow-copy-file",
+    "fs:allow-exists",
+    "fs:allow-create",
+    "fs:write-all",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "**" }]
+    },
     "dialog:default",
     "process:default",
     "process:allow-exit",
     "process:allow-restart",
     "shell:allow-open",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

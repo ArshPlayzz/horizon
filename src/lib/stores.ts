@@ -216,7 +216,6 @@ export const useFileStore = create<FileState>((set, get) => {
     },
 
     searchFiles: async (_query) => {
-      // Implementacja wyszukiwania plików
       return [];
     },
 

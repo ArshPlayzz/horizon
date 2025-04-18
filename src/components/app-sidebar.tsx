@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconUpload, IconSearch, IconX, IconGitBranch, IconFolder } from "@tabler/icons-react"
+import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconSearch, IconX, IconGitBranch, IconFolder, IconPlus, IconFileText, IconFolderPlus, IconCopy, IconTrash, IconEdit, IconScissors } from "@tabler/icons-react"
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,13 @@ import { DirectoryItem } from "@/lib/file-service"
 import { useFileContext } from "@/lib/file-context"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "./ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuGroup,
+} from "@/components/ui/dropdown-menu"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toggleSidebar } = useSidebar();
@@ -345,6 +352,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   activeFilePath: string | null
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number, y: number } | null>(null);
   const { loadDirectoryContents } = useFileContext();
   
   const handleClick = () => {
@@ -358,24 +366,101 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
       onFileClick(item.path);
     }
   };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
   
   const isActive = activeFilePath === item.path;
   
   return (
     <div className="pl-1 max-w-[17rem]">
-      <div 
-        className={`flex flex-row items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isActive ? 'bg-muted' : ''}`}
-        onClick={handleClick}
+      <DropdownMenu 
+        open={!!contextMenuPosition} 
+        onOpenChange={(open) => {
+          if (!open) setContextMenuPosition(null);
+        }}
       >
-        {item.isDirectory ? (
-          <IconChevronRight 
-            className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-          />
-        ) : (
-          <IconFile className="h-4 w-4 text-muted-foreground" />
+        <div 
+          className={`flex flex-row items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isActive ? 'bg-muted' : ''}`}
+          onClick={handleClick}
+          onContextMenu={handleContextMenu}
+        >
+          {item.isDirectory ? (
+            <IconChevronRight 
+              className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+            />
+          ) : (
+            <IconFile className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="truncate text-sm">{item.name}</span>
+        </div>
+        
+        {contextMenuPosition && (
+          <DropdownMenuContent 
+            className="w-56" 
+            style={{
+              position: 'absolute',
+              left: `${contextMenuPosition.x}px`,
+              top: `${contextMenuPosition.y}px`
+            }}
+          >
+            {item.isDirectory && (
+              <>
+                <DropdownMenuGroup>
+                  <DropdownMenuItem>
+                    <IconFileText className="mr-2 h-4 w-4" />
+                    <span>New File</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <IconFolderPlus className="mr-2 h-4 w-4" />
+                    <span>New Folder</span>
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <IconScissors className="mr-2 h-4 w-4" />
+                <span>Cut</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <IconCopy className="mr-2 h-4 w-4" />
+                <span>Copy</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <IconCopy className="mr-2 h-4 w-4" />
+                <span>Copy Path</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <IconCopy className="mr-2 h-4 w-4" />
+                <span>Copy Relative Path</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <IconEdit className="mr-2 h-4 w-4" />
+                <span>Rename</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive focus:text-destructive">
+                <IconTrash className="mr-2 h-4 w-4" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
         )}
-        <span className="truncate text-sm">{item.name}</span>
-      </div>
+      </DropdownMenu>
       
       {item.isDirectory && isExpanded && item.children && (
         <div className="pl-3">

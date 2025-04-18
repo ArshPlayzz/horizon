@@ -128,25 +128,22 @@ function MainContent() {
             });
             
             const fileContentRef = useRef(file.content);
-            // Store the unsaved state to avoid re-renders when it changes
             const isUnsavedRef = useRef(file.isUnsaved);
             
             useEffect(() => {
                 fileContentRef.current = file.content;
-                // Don't update isUnsavedRef here to prevent re-render cycle
             }, [file.path]);
             
             const handleChange = useCallback((content: string) => {
                 console.log('handleChange in MemoizedCodeEditor', { contentLength: content.length });
                 fileContentRef.current = content;
-                isUnsavedRef.current = true; // Mark as unsaved locally
+                isUnsavedRef.current = true; 
                 onChangeContent(content);
             }, [onChangeContent]);
             
-            // Create a wrapped save handler that maintains focus
             const handleSave = useCallback(() => {
                 console.log('handleSave in MemoizedCodeEditor');
-                isUnsavedRef.current = false; // Mark as saved locally
+                isUnsavedRef.current = false; 
                 onSave();
             }, [onSave]);
             
@@ -160,7 +157,6 @@ function MainContent() {
             );
         },
         (prevProps, nextProps) => {
-            // Capture previous states for logging
             const prevInfo = {
                 path: prevProps.file.path,
                 language: prevProps.language,
@@ -175,8 +171,6 @@ function MainContent() {
                 isUnsaved: nextProps.file.isUnsaved
             };
             
-            // Only re-render if file path or language changes
-            // Explicitly ignore content changes and isUnsaved changes which cause focus issues
             const shouldNotUpdate = (
                 prevInfo.path === nextInfo.path && 
                 prevInfo.language === nextInfo.language

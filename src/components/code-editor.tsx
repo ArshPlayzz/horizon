@@ -135,7 +135,6 @@ export function CodeEditor({
   const contentRef = useRef(initialValue);
   const initialized = useRef(false);
   const lastSelectionRef = useRef<any>(null);
-  // Track if we're currently processing a save operation
   const isSavingRef = useRef(false);
   
   console.log('CodeEditor render', { language, readOnly, contentLength: initialValue.length });
@@ -143,7 +142,6 @@ export function CodeEditor({
   useEffect(() => {
     console.log('initialValue changed', { initialValue });
     
-    // Skip updating if we're in the middle of a save operation
     if (isSavingRef.current) {
       console.log('Skipping initialValue update during save operation');
       return;
@@ -167,15 +165,12 @@ export function CodeEditor({
         console.log('Skipping initialValue update because it appears to be from our own edits');
       }
     } else {
-      // Always set contentRef when component first initializes
       contentRef.current = initialValue;
     }
   }, [initialValue]);
 
-  // This effect ensures the editor keeps focus
   useEffect(() => {
     if (editorViewRef.current && initialized.current) {
-      // Re-focus the editor on the next tick after any render
       const timeoutId = setTimeout(() => {
         if (editorViewRef.current && document.activeElement !== editorRef.current) {
           console.log('Refocusing editor after render');
@@ -311,25 +306,21 @@ export function CodeEditor({
           },
           keydown: (event) => {
             console.log('Key down in editor', { key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey });
-            // Handle save shortcut (Ctrl+S or Cmd+S)
             if ((event.ctrlKey || event.metaKey) && event.key === 's') {
               event.preventDefault();
               console.log('Save shortcut detected');
               if (onSave) {
                 console.log('Calling onSave handler');
                 
-                // Set the flag to prevent content updates during save
                 isSavingRef.current = true;
                 
                 try {
                   onSave();
                 } finally {
-                  // Ensure we reset the flag even if save fails
                   setTimeout(() => {
                     isSavingRef.current = false;
                     console.log('Save operation completed, focus state restored');
                     
-                    // Ensure editor has focus after save operation
                     if (editorViewRef.current) {
                       editorViewRef.current.focus();
                     }

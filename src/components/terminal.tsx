@@ -476,7 +476,7 @@ const Terminal: React.FC<TerminalProps> = ({
 
     if (e.key === 'Tab') {
       e.preventDefault();
-      // TODO: Implementacja autouzupełniania
+      // TODO: Autocomplete
       return;
     }
 

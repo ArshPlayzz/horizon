@@ -31,6 +31,7 @@ pub fn run() {
             terminal::load_command_history,
             terminal::send_terminal_signal,
             terminal::has_child_process,
+            terminal::detect_terminal_urls,
             fs::create_directory,
             fs::create_file,
             fs::read_file,

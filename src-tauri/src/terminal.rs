@@ -7,6 +7,7 @@ use crate::process_tracker::{ProcessTracker, find_child_process};
 use sysinfo::Pid;
 use std::fs;
 use serde_json::{self, json};
+use regex::Regex;
 #[cfg(unix)]
 
 /// State management for terminal sessions
@@ -22,6 +23,53 @@ pub fn init_terminal_state() -> TerminalState {
         processes: Arc::new(Mutex::new(HashMap::new())),
         process_tracker: ProcessTracker::new()
     }
+}
+
+/// Sanitizes terminal output by removing ANSI escape sequences
+/// 
+/// # Arguments
+/// * `text` - The terminal output text to sanitize
+/// 
+/// # Returns
+/// The sanitized text
+fn sanitize_terminal_output(text: &str) -> String {
+    // Compile regex patterns for efficiency
+    lazy_static::lazy_static! {
+        static ref PATTERNS: Vec<Regex> = vec![
+            Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap(),
+            Regex::new(r"\x1b\]8;;.*?\x1b\\").unwrap(),
+            Regex::new(r"\x1b\]8;;.*?\x07").unwrap(),
+            Regex::new(r"\x1b\]1337;.*?\x1b\\").unwrap(),
+            Regex::new(r"\x1b\]1337;.*?\x07").unwrap(),
+            Regex::new(r"\x1b\[\?25[hl]").unwrap(),
+            Regex::new(r"\x1b\[[0-9]*[ABCDEFGHJKST]").unwrap(),
+            Regex::new(r"\x1b\[[0-9]*[JK]").unwrap(),
+            Regex::new(r"\x1b\[[0-9;]*m").unwrap(),
+            Regex::new(r"\x1b\[[0-9;]*[cnsu]").unwrap(),
+            Regex::new(r"\x1b\[[0-9;]*[hl]").unwrap(),
+            Regex::new(r"\x1b\[[^a-zA-Z]*[a-zA-Z]").unwrap(),
+            Regex::new(r"\x1b\][^a-zA-Z]*[a-zA-Z]").unwrap(),
+            Regex::new(r"\x1b[^a-zA-Z]").unwrap(),
+        ];
+    }
+
+    let mut result = text.to_string();
+    for pattern in PATTERNS.iter() {
+        result = pattern.replace_all(&result, "").to_string();
+    }
+    result
+}
+
+/// Sanitizes terminal output from raw bytes
+/// 
+/// # Arguments
+/// * `bytes` - The terminal output bytes to sanitize
+/// 
+/// # Returns
+/// The sanitized text
+fn sanitize_terminal_bytes(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    sanitize_terminal_output(&text)
 }
 
 /// Creates a new terminal session with the specified working directory
@@ -81,22 +129,29 @@ pub async fn create_terminal_session(
                 CommandEvent::Stdout(bytes) => {
                     match String::from_utf8(bytes.clone()) {
                         Ok(text) => {
-                            let _ = window_clone.emit(&format!("terminal_output_{}", id_clone), text);
+                            // Sanitize the output before sending to the frontend
+                            let sanitized_text = sanitize_terminal_output(&text);
+                            let _ = window_clone.emit(&format!("terminal_output_{}", id_clone), sanitized_text);
                         },
                         Err(_) => {
+                            // W przypadku nieprawidłowego UTF-8, używamy nowej funkcji sanityzującej bajty
+                            let sanitized_text = sanitize_terminal_bytes(&bytes);
                             let _ = window_clone.emit(
                                 &format!("terminal_output_{}", id_clone), 
-                                format!("{:?}", bytes)
+                                sanitized_text
                             );
                         }
                     }
                 }
                 CommandEvent::Stderr(line) => {
-                    let _ = window_clone.emit(&format!("terminal_error_{}", id_clone), line);
+                    // Sanitize error output too
+                    let sanitized_line = sanitize_terminal_bytes(&line);
+                    let _ = window_clone.emit(&format!("terminal_error_{}", id_clone), sanitized_line);
                 }
                 CommandEvent::Error(err) => {
-                    let _ = window_clone.emit(&format!("terminal_error_{}", id_clone), 
-                        format!("Error: {}", err));
+                    let error_message = format!("Error: {}", err);
+                    let sanitized_error = sanitize_terminal_output(&error_message);
+                    let _ = window_clone.emit(&format!("terminal_error_{}", id_clone), sanitized_error);
                 }
                 CommandEvent::Terminated(status) => {
                     let _ = window_clone.emit(&format!("terminal_exit_{}", id_clone), 
@@ -431,4 +486,47 @@ pub async fn has_child_process(
     } else {
         Err(format!("No terminal session with id: {}", id))
     }
+}
+
+/// Detects URLs in the given text
+/// 
+/// # Arguments
+/// * `text` - The text to process
+/// 
+/// # Returns
+/// A JSON object with the detected URLs and their positions
+fn detect_urls_in_text(text: &str) -> serde_json::Value {
+    lazy_static::lazy_static! {
+        static ref URL_REGEX: Regex = Regex::new(r"(https?://[^\s]+)").unwrap();
+    }
+    
+    let mut results = Vec::new();
+    for cap in URL_REGEX.captures_iter(text) {
+        let url = cap.get(0).unwrap().as_str();
+        let start = cap.get(0).unwrap().start();
+        let end = cap.get(0).unwrap().end();
+        
+        results.push(json!({
+            "url": url,
+            "start": start,
+            "end": end
+        }));
+    }
+    
+    json!({
+        "text": text,
+        "urls": results
+    })
+}
+
+/// Command to detect URLs in text
+/// 
+/// # Arguments
+/// * `text` - The text to process
+/// 
+/// # Returns
+/// A JSON object with detected URLs
+#[command]
+pub async fn detect_terminal_urls(text: String) -> Result<serde_json::Value, String> {
+    Ok(detect_urls_in_text(&text))
 }

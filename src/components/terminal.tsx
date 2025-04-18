@@ -70,24 +70,6 @@ const detectUrls = (text: string): { text: string; isUrl: boolean; url: string }
   return parts;
 };
 
-const sanitizeTerminalOutput = (text: string): string => {
-  return text
-    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
-    .replace(/\x1b\]8;;.*?\x1b\\/g, '')
-    .replace(/\x1b\]8;;.*?\x07/g, '')
-    .replace(/\x1b\]1337;.*?\x1b\\/g, '')
-    .replace(/\x1b\]1337;.*?\x07/g, '')
-    .replace(/\x1b\[\?25[hl]/g, '')
-    .replace(/\x1b\[[0-9]*[ABCDEFGHJKST]/g, '')
-    .replace(/\x1b\[[0-9]*[JK]/g, '')
-    .replace(/\x1b\[[0-9;]*m/g, '')
-    .replace(/\x1b\[[0-9;]*[cnsu]/g, '')
-    .replace(/\x1b\[[0-9;]*[hl]/g, '')
-    .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '')
-    .replace(/\x1b\][^a-zA-Z]*[a-zA-Z]/g, '')
-    .replace(/\x1b[^a-zA-Z]/g, '');
-};
-
 const Terminal: React.FC<TerminalProps> = ({ 
   workingDirectory, 
   onClose, 
@@ -195,7 +177,6 @@ const Terminal: React.FC<TerminalProps> = ({
         } else {
           output = String(event.payload);
         }
-        output = sanitizeTerminalOutput(output);
         setInstances(prev => prev.map(instance => 
           instance.id === id 
             ? { ...instance, state: { ...instance.state, output: [...instance.state.output, output] } }
@@ -212,7 +193,6 @@ const Terminal: React.FC<TerminalProps> = ({
         } else {
           error = String(event.payload);
         }
-        error = sanitizeTerminalOutput(error);
         setInstances(prev => prev.map(instance => 
           instance.id === id 
             ? { ...instance, state: { ...instance.state, output: [...instance.state.output, `Error: ${error}`] } }
@@ -556,7 +536,7 @@ const Terminal: React.FC<TerminalProps> = ({
             >
               {activeInstance?.state.output.map((line, i) => (
                 <div key={i} className="whitespace-pre-wrap">
-                  {detectUrls(sanitizeTerminalOutput(line)).map((part, j) => 
+                  {detectUrls(line).map((part, j) => 
                     part.isUrl ? (
                       <span
                         key={j}

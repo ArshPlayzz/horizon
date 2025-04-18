@@ -24,39 +24,37 @@
 
 </div>
 
-A modern, desktop-based code editor built with Tauri, React, and TypeScript. This application provides a powerful and customizable coding environment with integrated terminal support and file system management.
 
 ## Features
 
 ### Core Editor
-- High-performance native application powered by Tauri
-- Advanced syntax highlighting for multiple programming languages
-- Sophisticated UI leveraging Tailwind CSS and Radix UI components
-- Comprehensive file and content search capabilities
-- Seamless file system integration with intuitive directory navigation
-- Professional-grade integrated terminal with multi-instance support
-- Intelligent code completion and real-time linting
-- Elegant dark theme optimized for extended coding sessions
-- Adaptive responsive design for various screen sizes
+- Application powered by Tauri
+- Syntax highlighting for multiple programming languages
+- UI built with Tailwind CSS and Radix UI components
+- File and content search capabilities
+- File system integration with directory navigation
+- Integrated terminal with multi-instance support
+- Dark theme for long coding sessions
 
 ### Terminal Integration
-- Enterprise-grade terminal implementation with native process management
+- Terminal implementation with native process management
 - Support for multiple concurrent terminal instances
-- Advanced process tracking and management capabilities
+- Process tracking and management
 - Persistent command history for improved workflow
 - Cross-platform compatibility (Windows, macOS, Linux)
-- Intelligent working directory synchronization
-- Robust signal handling (SIGINT, SIGTERM)
-- Smart URL detection and handling
-- Secure ANSI escape sequence processing
+- Working directory synchronization
+- Signal handling (SIGINT, SIGTERM)
+- URL detection and handling
+- ANSI escape sequence processing
 
 ### File Management
-- Intuitive file tree navigation system
-- Advanced file and content search functionality
-- Comprehensive file operations (open, save, save as)
-- Visual directory structure representation
-- Integrated image file preview capabilities
-- Efficient multiple file tab management
+- File tree navigation system
+- File and content search functionality
+- File operations (open, save, save as)
+- Directory structure representation
+- Image file preview capabilities
+- Audio file player
+- Multiple file tab management
 
 ## Tech Stack
 
@@ -65,6 +63,7 @@ A modern, desktop-based code editor built with Tauri, React, and TypeScript. Thi
 - TypeScript
 - Tailwind CSS
 - Radix UI
+- ShadCN
 - CodeMirror 6
 
 ### Backend (Tauri/Rust)
@@ -127,14 +126,25 @@ npm run tauri build
 
 ### Frontend (`src/`)
 - `components/` - React components
-  - `code-editor.tsx` - Main editor component
-  - `terminal.tsx` - Custom terminal implementation
   - `app-sidebar.tsx` - File navigation sidebar
+  - `audio-player.tsx` - Audio playback component
+  - `code-editor.tsx` - Main editor component 
+  - `create-dialog.tsx` - Dialog for creating new files
   - `image-viewer.tsx` - Image preview component
-  - `ui/` - Reusable UI components
+  - `rename-dialog.tsx` - Dialog for renaming files
+  - `terminal.tsx` - Custom terminal implementation
+  - `theme-provider.tsx` - Theme management
 - `lib/` - Core functionality
   - `file-context.tsx` - File management context
   - `file-service.ts` - File operations service
+  - `native-fs.ts` - Native file system integration
+  - `stores.ts` - State management stores
+  - `utils.ts` - Utility functions
+- `hooks/` - Custom React hooks
+  - `use-mobile.ts` - Mobile detection hook
+  - `use-theme.ts` - Theme management hook
+- `App.tsx` - Main application component
+- `main.tsx` - Application entry point
 
 ### Backend (`src-tauri/`)
 - `src/`
@@ -142,20 +152,36 @@ npm run tauri build
   - `lib.rs` - Library initialization
   - `terminal.rs` - Terminal management
   - `process_tracker.rs` - Process tracking
+  - `fs.rs` - File system operations
+- `capabilities/` - Tauri capabilities configuration
+- `icons/` - Application icons
+- `tauri.conf.json` - Tauri configuration
+- `Cargo.toml` - Rust dependencies
 
-## TODO List
+## Roadmap
 
 ### High Priority
-- [ ] Implement Git integration
-- [ ] Add settings panel
-- [ ] Implement extension system
-- [ ] Add debugging support
+- [ ] LSP Server integration for enhanced language support
+- [ ] Git integration with full GitHub support
+- [ ] Settings panel with comprehensive configuration options
+- [ ] Extensions and plugins system
+- [ ] GitHub Actions autobuild pipeline
+
+### Medium Priority
+- [ ] AI-powered chat assistant for code help
+- [ ] Debugging support with breakpoints and variable inspection
+- [ ] Code analysis tools for better code quality
+- [ ] Linting and Prettier integration
+- [ ] Multiplayer collaboration features
+- [ ] Integrated project management system - Not just a code editor, but also a tool for task and project management
+- [ ] Advanced data visualization - Interactive charts, data structure visualizations, integrated notebooks
+- [ ] Code presentation mode - Features that facilitate presenting and discussing code during meetings or recordings
 
 ### Low Priority
-- [ ] Add more themes
-- [ ] Add plugin system
-- [ ] Implement code analysis
-- [ ] Add code refactoring tools
+- [ ] Additional theme support and customization
+- [ ] Advanced code refactoring tools
+- [ ] Performance optimization
+- [ ] Documentation improvements
 
 ## Contributing
 

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { RenameDialog } from "./rename-dialog"
 import { CreateDialog } from "./create-dialog"
+import { FileService } from "@/lib/file-service"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toggleSidebar } = useSidebar();
@@ -408,6 +409,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number, y: number } | null>(null);
+  const [localChildren, setLocalChildren] = useState<DirectoryItem[] | null>(null);
+  const [isLocalLoading, setIsLocalLoading] = useState(false);
+  
   const { 
     loadDirectoryContents,
     handleCut,
@@ -427,7 +431,35 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   // Effect to load contents when expanded
   useEffect(() => {
     if (item.isDirectory && isExpanded && (item.needsLoading || !item.children || item.children.length === 0)) {
-      loadDirectoryContents(item.path, item);
+      // Set local loading state
+      setIsLocalLoading(true);
+      setLocalChildren(null);
+      
+      // Call backend service 
+      const loadContents = async () => {
+        try {
+          loadDirectoryContents(item.path, item);
+          
+          // Direct load from file service
+          const fileService = new FileService();
+          const contents = await fileService.loadDirectoryContents(item.path);
+          if (contents && contents.length > 0) {
+            setLocalChildren(contents);
+          } else {
+            // Empty directory - set empty array to indicate we have loaded
+            setLocalChildren([]);
+          }
+          
+          setIsLocalLoading(false);
+        } catch (error) {
+          console.error('Error loading contents:', error);
+          setIsLocalLoading(false);
+          // Set empty array to avoid infinite loading
+          setLocalChildren([]);
+        }
+      };
+      
+      loadContents();
     }
   }, [isExpanded, item, loadDirectoryContents]);
   
@@ -461,8 +493,11 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     setContextMenuPosition(null);
   };
   
-  // Determine loading state
-  const isLoading = item.isDirectory && isExpanded && item.needsLoading;
+  // Determine loading state - use only local state if we've tried to load
+  const isLoading = localChildren === null ? isLocalLoading : false;
+  
+  // Use local children if available
+  const children = localChildren || item.children;
   
   return (
     <div className="pl-1 max-w-[16rem]">
@@ -591,8 +626,8 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             <div className="flex items-center gap-2 py-1 px-2 text-sm text-muted-foreground">
               Loading...
             </div>
-          ) : item.children && item.children.length > 0 ? (
-            item.children.map((child) => (
+          ) : children && children.length > 0 ? (
+            children.map((child) => (
               <DirectoryTree 
                 key={child.path} 
                 item={child} 

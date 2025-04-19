@@ -4,6 +4,7 @@ import { join } from '@tauri-apps/api/path';
 import * as nativeFs from './native-fs';
 
 export interface FileInfo {
+  id: string;
   path: string;
   name: string;
   content: string;
@@ -27,7 +28,6 @@ export class FileService {
   private directoryStructure: DirectoryItem[] | null = null;
   private fileContentIndex: Map<string, string> = new Map();
   private fileSearchIndex: Map<string, Set<string>> = new Map();
-  private indexingInProgress: boolean = false;
 
   constructor() {
     if (fileServiceInstance) {
@@ -64,10 +64,10 @@ export class FileService {
 
       const filePath = selected as string;
       
-      // Use native Rust function to get file info
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
         this.currentFile = {
+          id: fileInfo.id,
           path: fileInfo.path,
           name: fileInfo.name,
           content: fileInfo.content,
@@ -78,10 +78,17 @@ export class FileService {
         console.error('Error using native file info, falling back to JS implementation:', error);
         const content = await readTextFile(filePath);
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+        
+        const timestamp = Date.now();
+        const randomPart = Math.random().toString(36).substring(2, 12);
+        const id = `${filePath}-${timestamp}-${randomPart}`;
+        
         this.currentFile = {
+          id,
           path: filePath,
           name: fileName,
-          content
+          content,
+          isUnsaved: false
         };
         return this.currentFile;
       }
@@ -261,10 +268,29 @@ export class FileService {
    */
   async openFileFromPath(filePath: string): Promise<FileInfo | null> {
     try {
-      // Use native Rust function to get file info
+      console.log(`Opening file from path: ${filePath}`);
+      
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
+        console.log(`Got file info, content length: ${fileInfo.content.length}, preview: ${fileInfo.content.substring(0, 50)}...`);
+        
+        if (fileInfo.content.length === 0) {
+          try {
+            console.log(`File content appears empty, trying direct read...`);
+            const directContent = await nativeFs.readFile(filePath);
+            console.log(`Direct read result, content length: ${directContent.length}, preview: ${directContent.substring(0, 50)}...`);
+            
+            if (directContent.length > 0) {
+              console.log(`Using direct read content instead of empty getFileInfo content`);
+              fileInfo.content = directContent;
+            }
+          } catch (readError) {
+            console.error('Error during direct file read:', readError);
+          }
+        }
+        
         this.currentFile = {
+          id: fileInfo.id,
           path: fileInfo.path,
           name: fileInfo.name,
           content: fileInfo.content,
@@ -274,11 +300,20 @@ export class FileService {
       } catch (error) {
         console.error('Error using native file info, falling back to JS implementation:', error);
         const content = await readTextFile(filePath);
+        console.log(`Fallback JS read, content length: ${content.length}, preview: ${content.substring(0, 50)}...`);
+        
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+        
+        const timestamp = Date.now();
+        const randomPart = Math.random().toString(36).substring(2, 12);
+        const id = `${filePath}-${timestamp}-${randomPart}`;
+        
         this.currentFile = {
+          id,
           path: filePath,
           name: fileName,
-          content
+          content,
+          isUnsaved: false
         };
         return this.currentFile;
       }
@@ -288,55 +323,88 @@ export class FileService {
     }
   }
 
-  /**
-   * Saves a file with the given content
-   * @param content - Content to save
-   * @param saveAs - Whether to show save dialog even if file exists
-   * @returns File information or null if failed
-   */
-  async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | null> {
+/**
+ * Saves current file
+ * @param content - Content to save
+ * @param saveAs - Whether to show a file dialog
+ * @returns FileInfo or null if cancelled
+ */
+async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | null> {
+  try {
+    let filePath: string | null = null;
+    
+    if (saveAs || !this.currentFile) {
+      // Open save dialog
+      const selected = await save({
+        filters: [
+          { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+      
+      if (!selected) {
+        return null;
+      }
+      
+      filePath = selected as string;
+    } else {
+      filePath = this.currentFile.path;
+    }
+    
+    // Upewnij się, że content jest stringiem
+    const cleanContent = String(content);
+    
+    await nativeFs.writeToFile(filePath, cleanContent);
+    
+    let savedContent = "";
     try {
-      let filePath: string | null = null;
-
-      if (saveAs || !this.currentFile) {
-        const selected = await save({
-          filters: [
-            { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
-            { name: 'All Files', extensions: ['*'] }
-          ]
-        });
-
-        if (!selected) {
-          return null;
-        }
-
-        filePath = selected as string;
-      } else {
-        filePath = this.currentFile.path;
-      }
-
-      // Use native Rust function to write file
-      try {
-        await nativeFs.writeToFile(filePath, content);
-      } catch (error) {
-        console.error('Error using native file writing, falling back to JS implementation:', error);
-        await writeTextFile(filePath, content);
-      }
-
-      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
-      this.currentFile = {
-        path: filePath,
-        name: fileName,
-        content,
+      savedContent = await nativeFs.readFile(filePath);
+    } catch (error) {
+      console.error('[FileService] Error verifying saved content:', error);
+    }
+    
+    try {
+      const fileInfo = await nativeFs.getFileInfo(filePath);
+      const actualContent = cleanContent;
+      
+      const updatedFile: FileInfo = {
+        id: saveAs ? fileInfo.id : (this.currentFile?.id || fileInfo.id),
+        path: fileInfo.path,
+        name: fileInfo.name,
+        content: actualContent,
         isUnsaved: false
       };
-
-      return this.currentFile;
+      
+      console.log(`[FileService] Returning updated file info with content length: ${updatedFile.content.length}`);
+      
+      this.currentFile = updatedFile;
+      return updatedFile;
     } catch (error) {
-      console.error('Error saving file:', error);
-      throw error;
+      console.error('[FileService] Error getting file info after save, falling back to JS implementation:', error);
+      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+      
+      const id = saveAs 
+        ? `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`
+        : (this.currentFile?.id || `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`);
+      
+      const updatedFile: FileInfo = {
+        id,
+        path: filePath,
+        name: fileName,
+        content: cleanContent,
+        isUnsaved: false
+      };
+      
+      console.log(`[FileService] Returning file info from fallback with content length: ${updatedFile.content.length}`);
+      
+      this.currentFile = updatedFile;
+      return updatedFile;
     }
+  } catch (error) {
+    console.error('[FileService] Error saving file:', error);
+    throw error;
   }
+}
 
   /**
    * Gets the current file

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef } from "react"
-import { EditorState } from "@codemirror/state"
+import { useEffect, useRef, useState } from "react"
+import { EditorState, StateEffect } from "@codemirror/state"
 import { javascript } from "@codemirror/lang-javascript"
 import { cn } from "@/lib/utils"
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete"
@@ -114,255 +114,277 @@ const shadcnHighlightStyle = HighlightStyle.define([
 ]);
 
 export interface CodeEditorProps {
-  initialValue?: string
-  onChange?: (value: string) => void
-  language?: "javascript" | "typescript" | "jsx" | "tsx" | "html" | "css" | "python" | "json" | "xml" | "markdown" | "sql" | "rust" | "cpp" | "java" | "php" | "sass" | "less" | "yaml" | string
-  className?: string
+  initialValue: string
+  onChange?: (content: string) => void
+  language: string
   readOnly?: boolean
   onSave?: () => void
+  className?: string
+}
+
+function getEditorExtensions({
+  language,
+  readOnly,
+  onChange,
+  onSave,
+}: {
+  language: string;
+  readOnly: boolean;
+  onChange?: (content: string) => void;
+  onSave?: () => void;
+}) {
+  let langExtension;
+  switch (language) {
+    case "html":
+      langExtension = html();
+      break;
+    case "css":
+      langExtension = css();
+      break;
+    case "javascript":
+      langExtension = javascript();
+      break;
+    case "typescript":
+      langExtension = javascript({ typescript: true });
+      break;
+    case "jsx":
+      langExtension = javascript({ jsx: true });
+      break;
+    case "tsx":
+      langExtension = javascript({ jsx: true, typescript: true });
+      break;
+    case "json":
+      langExtension = json();
+      break;
+    case "python":
+      langExtension = python();
+      break;
+    case "java":
+      langExtension = java();
+      break;
+    case "rust":
+      langExtension = rust();
+      break;
+    case "cpp":
+    case "c++":
+    case "c":
+      langExtension = cpp();
+      break;
+    case "php":
+      langExtension = php();
+      break;
+    case "xml":
+      langExtension = xml();
+      break;
+    case "markdown":
+    case "md":
+      langExtension = markdown();
+      break;
+    case "sql":
+      langExtension = sql();
+      break;
+    case "sass":
+      langExtension = sass();
+      break;
+    case "less":
+      langExtension = less();
+      break;
+    case "yaml":
+      langExtension = yaml();
+      break;
+      
+    default:
+      langExtension = javascript({ typescript: true });
+  }
+
+  return [
+    lineNumbers(),
+    highlightActiveLineGutter(),
+    history(),
+    foldGutter(),
+    bracketMatching(),
+    closeBrackets(),
+    langExtension,
+    shadcnTheme,
+    syntaxHighlighting(shadcnHighlightStyle),
+    autocompletion(),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        const newContent = update.state.doc.toString();
+        if (onChange) {
+          onChange(newContent);
+        }
+      }
+    }),
+    EditorView.editable.of(!readOnly),
+    EditorView.domEventHandlers({
+      focus: (event, view) => {
+        return false;
+      },
+      blur: () => {
+        return false;
+      },
+      keydown: (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+          event.preventDefault();
+          if (onSave) {
+            onSave();
+          }
+          return true;
+        }
+        return false;
+      }
+    }),
+    keymap.of([
+      ...defaultKeymap,
+      ...historyKeymap,
+      ...completionKeymap,
+      ...searchKeymap,
+      ...lintKeymap,
+      ...closeBracketsKeymap,
+      indentWithTab
+    ])
+  ];
 }
 
 export function CodeEditor({
-  initialValue = "",
+  initialValue,
   onChange,
-  language = "typescript",
-  className,
+  language,
   readOnly = false,
   onSave,
+  className,
 }: CodeEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null);
+  const prevPropsRef = useRef<CodeEditorProps>({
+    initialValue: "",
+    language: "",
+    readOnly: false,
+  });
+  
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+  
   const editorViewRef = useRef<EditorView | null>(null);
-  const contentRef = useRef(initialValue);
-  const initialized = useRef(false);
-  const lastSelectionRef = useRef<any>(null);
-  const isSavingRef = useRef(false);
-  
-  console.log('CodeEditor render', { language, readOnly, contentLength: initialValue.length });
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const initialValueRef = useRef(initialValue);
+  const onChangeRef = useRef(onChange);
+  const onSaveRef = useRef(onSave);
+  const [currentInitialValue, setCurrentInitialValue] = useState(initialValue);
+  const didMountRef = useRef(false);
+  const cleanupStartedRef = useRef(false);
   
   useEffect(() => {
-    console.log('initialValue changed', { initialValue });
-    
-    if (isSavingRef.current) {
-      console.log('Skipping initialValue update during save operation');
-      return;
-    }
-    
-    if (editorViewRef.current && initialized.current && contentRef.current.length !== initialValue.length) {
-      const currentContent = editorViewRef.current.state.doc.toString();
-      if (Math.abs(currentContent.length - initialValue.length) > 1 || !initialValue.includes(currentContent)) {
-        console.log('Updating editor content due to external initialValue change');
-        contentRef.current = initialValue;
-        
-        const transaction = editorViewRef.current.state.update({
-          changes: {
-            from: 0, 
-            to: editorViewRef.current.state.doc.length, 
-            insert: initialValue
-          }
-        });
-        editorViewRef.current.dispatch(transaction);
-      } else {
-        console.log('Skipping initialValue update because it appears to be from our own edits');
-      }
-    } else {
-      contentRef.current = initialValue;
-    }
-  }, [initialValue]);
-
+    onChangeRef.current = onChange;
+    onSaveRef.current = onSave;
+  }, [onChange, onSave]);
+  
   useEffect(() => {
-    if (editorViewRef.current && initialized.current) {
-      const timeoutId = setTimeout(() => {
-        if (editorViewRef.current && document.activeElement !== editorRef.current) {
-          console.log('Refocusing editor after render');
-          editorViewRef.current.focus();
-        }
-      }, 0);
-      
-      return () => clearTimeout(timeoutId);
-    }
+    prevPropsRef.current = {
+      initialValue,
+      language,
+      readOnly,
+      onChange,
+      onSave,
+    };
   });
 
   useEffect(() => {
-    if (!editorRef.current) return;
-    console.log('Setting up editor', { language, readOnly });
+    if (cleanupStartedRef.current) return;
+    
+    if (initialValue !== currentInitialValue) {
+      setCurrentInitialValue(initialValue);
+      initialValueRef.current = initialValue;
+      
+      if (editorViewRef.current) {
+        const currentContent = editorViewRef.current.state.doc.toString();
         
-    if (editorViewRef.current) {
-      console.log('Destroying previous editor view');
-      editorViewRef.current.destroy();
-      editorViewRef.current = null;
+        if (currentContent !== initialValue) {
+          editorViewRef.current.dispatch({
+            changes: {
+              from: 0,
+              to: currentContent.length,
+              insert: initialValue,
+            },
+          });
+        }
+      }
     }
+  }, [initialValue, currentInitialValue]);
 
-    let langExtension;
-    switch (language) {
-      case "html":
-        langExtension = html();
-        break;
-      case "css":
-        langExtension = css();
-        break;
-      case "javascript":
-        langExtension = javascript();
-        break;
-      case "typescript":
-        langExtension = javascript({ typescript: true });
-        break;
-      case "jsx":
-        langExtension = javascript({ jsx: true });
-        break;
-      case "tsx":
-        langExtension = javascript({ jsx: true, typescript: true });
-        break;
-      case "json":
-        langExtension = json();
-        break;
-      case "python":
-        langExtension = python();
-        break;
-      case "java":
-        langExtension = java();
-        break;
-      case "rust":
-        langExtension = rust();
-        break;
-      case "cpp":
-      case "c++":
-      case "c":
-        langExtension = cpp();
-        break;
-      case "php":
-        langExtension = php();
-        break;
-      case "xml":
-        langExtension = xml();
-        break;
-      case "markdown":
-      case "md":
-        langExtension = markdown();
-        break;
-      case "sql":
-        langExtension = sql();
-        break;
-      case "sass":
-        langExtension = sass();
-        break;
-      case "less":
-        langExtension = less();
-        break;
-      case "yaml":
-        langExtension = yaml();
-        break;
-        
-      default:
-        langExtension = javascript({ typescript: true });
+  useEffect(() => {
+    if (cleanupStartedRef.current) return;
+    
+    if (editorViewRef.current && didMountRef.current) {
+      editorViewRef.current.focus();
     }
+  }, [editorViewRef.current]);
 
-    const state = EditorState.create({
-      doc: contentRef.current,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        history(),
-        foldGutter(),
-        bracketMatching(),
-        closeBrackets(),
-        langExtension,
-        shadcnTheme,
-        syntaxHighlighting(shadcnHighlightStyle),
-        autocompletion(),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            const newContent = update.state.doc.toString();
-            contentRef.current = newContent;
-            console.log('Document changed', { 
-              newContentLength: newContent.length,
-              selection: update.state.selection,
-              docChanged: update.docChanged
-            });
-            if (onChange) {
-              console.log('Calling onChange handler');
-              onChange(newContent);
-            }
-          }
-          if (update.selectionSet) {
-            console.log('Selection set', update.state.selection);
-            lastSelectionRef.current = update.state.selection;
-          }
-          if (update.focusChanged) {
-            console.log('Focus changed', { hasFocus: update.view.hasFocus });
-          }
-        }),
-        EditorView.editable.of(!readOnly),
-        EditorView.domEventHandlers({
-          focus: (event, view) => {
-            console.log('Editor focused', { hasSelection: !!lastSelectionRef.current });
-            if (lastSelectionRef.current) {
-              view.dispatch({ selection: lastSelectionRef.current });
-            }
-            return false;
-          },
-          blur: () => {
-            console.log('Editor blurred');
-            return false;
-          },
-          keydown: (event) => {
-            console.log('Key down in editor', { key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey });
-            if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-              event.preventDefault();
-              console.log('Save shortcut detected');
-              if (onSave) {
-                console.log('Calling onSave handler');
-                
-                isSavingRef.current = true;
-                
-                try {
-                  onSave();
-                } finally {
-                  setTimeout(() => {
-                    isSavingRef.current = false;
-                    console.log('Save operation completed, focus state restored');
-                    
-                    if (editorViewRef.current) {
-                      editorViewRef.current.focus();
-                    }
-                  }, 100);
-                }
-                
-                console.log('After onSave handler');
-              }
-              return true;
-            }
-            return false;
-          }
-        }),
-        keymap.of([
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...completionKeymap,
-          ...searchKeymap,
-          ...lintKeymap,
-          ...closeBracketsKeymap,
-          indentWithTab
-        ])
-      ],
-    });
+  useEffect(() => {
+    cleanupStartedRef.current = false;
+    
+    didMountRef.current = true;
+    
+    if (editorContainerRef.current && !editorViewRef.current) {
+      const extensions = getEditorExtensions({
+        language,
+        readOnly,
+        onChange: (content) => {
+          onChangeRef.current?.(content);
+        },
+        onSave: () => {
+          onSaveRef.current?.();
+        },
+      });
 
-    const view = new EditorView({
-      state,
-      parent: editorRef.current,
-    });
+      const startState = EditorState.create({
+        doc: initialValue,
+        extensions,
+      });
 
-    editorViewRef.current = view;
-    initialized.current = true;
-    console.log('Editor view created and initialized');
+      const view = new EditorView({
+        state: startState,
+        parent: editorContainerRef.current,
+      });
 
+      editorViewRef.current = view;
+    }
+    
     return () => {
-      console.log('Editor cleanup');
+      cleanupStartedRef.current = true;
+      
       if (editorViewRef.current) {
         editorViewRef.current.destroy();
         editorViewRef.current = null;
       }
     };
-  }, [language, readOnly, onChange, onSave]);
+  }, []);
+  
+  useEffect(() => {
+    if (cleanupStartedRef.current) return;
+    
+    if (!didMountRef.current || !editorViewRef.current) return;
+    
+    const view = editorViewRef.current;
+    
+    if (prevPropsRef.current.language !== language || 
+        prevPropsRef.current.readOnly !== readOnly) {
+      
+      const newExtensions = getEditorExtensions({
+        language,
+        readOnly,
+        onChange: (content) => {
+          onChangeRef.current?.(content);
+        },
+        onSave: () => {
+          onSaveRef.current?.();
+        },
+      });
+
+      view.dispatch({
+        effects: StateEffect.reconfigure.of(newExtensions),
+      });
+    }
+  }, [language, readOnly]);
 
   const getLanguageLabel = (lang: string): string => {
     switch (lang) {
@@ -399,7 +421,7 @@ export function CodeEditor({
       <div className="absolute inset-0">
         <ScrollArea className="absolute inset-0 w-full h-full" type="always">
           <div 
-            ref={editorRef}
+            ref={editorContainerRef}
             className="absolute inset-0"
             data-editor-container
             style={{ overscrollBehavior: "none" }}

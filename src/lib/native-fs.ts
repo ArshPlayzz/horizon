@@ -151,6 +151,24 @@ export async function appendToFile(path: string, content: string): Promise<void>
  * @returns Promise that resolves when operation completes
  */
 export async function writeToFile(path: string, content: string): Promise<void> {
+  console.log(`[native-fs] writeToFile called for path: ${path}`);
+  console.log(`[native-fs] Content type: ${typeof content}, length: ${content.length}`);
+  console.log(`[native-fs] Content preview: "${content.substring(0, 50)}..."`);
+  
+  // Extra validation to ensure we're passing a valid string
+  if (typeof content !== 'string') {
+    console.error(`[native-fs] Invalid content type: ${typeof content}`);
+    content = String(content);
+    console.log(`[native-fs] Converted content length: ${content.length}`);
+  }
+  
+  // Remove null characters if any
+  if (content.includes('\0')) {
+    console.warn(`[native-fs] Content contains null characters, cleaning...`);
+    content = content.replace(/\0/g, '');
+    console.log(`[native-fs] Cleaned content length: ${content.length}`);
+  }
+  
   return invoke('write_to_file', { path, content });
 }
 

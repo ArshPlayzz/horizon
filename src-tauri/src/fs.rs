@@ -226,8 +226,38 @@ pub fn append_to_file(path: String, content: String) -> Result<(), String> {
 /// Result indicating success or error message
 #[command]
 pub fn write_to_file(path: String, content: String) -> Result<(), String> {
-    fs::write(&path, content)
-        .map_err(|e| format!("Failed to write to file: {}", e))
+    println!("write_to_file called for path: {}, content length: {}, content: {:?}", path, content.len(), content);
+    
+    if content.is_empty() {
+        println!("WARNING: Attempting to write empty content to file: {}", path);
+    }
+    
+    let file = fs::File::create(&path)
+        .map_err(|e| format!("Failed to create file for writing: {}", e))?;
+    
+    let mut writer = std::io::BufWriter::new(file);
+    let bytes_written = writer.write(content.as_bytes())
+        .map_err(|e| format!("Failed to write to file: {}", e))?;
+    
+    println!("Wrote {} bytes to buffer", bytes_written);
+    
+    writer.flush()
+        .map_err(|e| format!("Failed to flush file buffer: {}", e))?;
+    
+    let file = writer.into_inner()
+        .map_err(|e| format!("Failed to get file handle: {}", e))?;
+    
+    file.sync_all()
+        .map_err(|e| format!("Failed to sync file to disk: {}", e))?;
+    
+    println!("Successfully wrote {} bytes to file: {}, content: {:?}", content.len(), path, content);
+    
+    match fs::read_to_string(&path) {
+        Ok(read_content) => println!("Verification: Read {} bytes after write", read_content.len()),
+        Err(e) => println!("Error verifying file content after write: {}", e),
+    }
+    
+    Ok(())
 }
 
 /// Get file information
@@ -239,8 +269,34 @@ pub fn write_to_file(path: String, content: String) -> Result<(), String> {
 /// FileInfo or error message
 #[command]
 pub fn get_file_info(path: String) -> Result<FileInfo, String> {
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    if !Path::new(&path).exists() {
+        return Err(format!("File does not exist: {}", path));
+    }
+    
+    let mut content = String::new();
+    let mut attempts = 0;
+    let max_attempts = 3;
+    
+    while attempts < max_attempts {
+        match fs::read_to_string(&path) {
+            Ok(file_content) => {
+                content = file_content;
+                if !content.is_empty() {
+                    break;
+                }
+            },
+            Err(e) => {
+                if attempts == max_attempts - 1 {
+                    return Err(format!("Failed to read file after {} attempts: {}", max_attempts, e));
+                }
+            }
+        }
+        
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        attempts += 1;
+    }
+    
+    println!("Successfully read {} bytes from file: {}", content.len(), path);
     
     let name = Path::new(&path)
         .file_name()
@@ -248,7 +304,6 @@ pub fn get_file_info(path: String) -> Result<FileInfo, String> {
         .unwrap_or("unknown")
         .to_string();
     
-    // Generujemy unikalny identyfikator z ścieżki i timestampa
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

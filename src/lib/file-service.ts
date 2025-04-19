@@ -272,9 +272,29 @@ export class FileService {
    */
   async openFileFromPath(filePath: string): Promise<FileInfo | null> {
     try {
+      console.log(`Opening file from path: ${filePath}`);
+      
       // Use native Rust function to get file info
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
+        console.log(`Got file info, content length: ${fileInfo.content.length}, preview: ${fileInfo.content.substring(0, 50)}...`);
+        
+        // W przypadku pustej zawartości, spróbujmy odczytać plik bezpośrednio
+        if (fileInfo.content.length === 0) {
+          try {
+            console.log(`File content appears empty, trying direct read...`);
+            const directContent = await nativeFs.readFile(filePath);
+            console.log(`Direct read result, content length: ${directContent.length}, preview: ${directContent.substring(0, 50)}...`);
+            
+            if (directContent.length > 0) {
+              console.log(`Using direct read content instead of empty getFileInfo content`);
+              fileInfo.content = directContent;
+            }
+          } catch (readError) {
+            console.error('Error during direct file read:', readError);
+          }
+        }
+        
         // Tworzymy kopię głęboką, aby zapobiec współdzielonym referencjom
         this.currentFile = {
           id: fileInfo.id,
@@ -287,6 +307,8 @@ export class FileService {
       } catch (error) {
         console.error('Error using native file info, falling back to JS implementation:', error);
         const content = await readTextFile(filePath);
+        console.log(`Fallback JS read, content length: ${content.length}, preview: ${content.substring(0, 50)}...`);
+        
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
         
         // Generujemy unikalny identyfikator dla implementacji JS
@@ -337,29 +359,40 @@ export class FileService {
         filePath = this.currentFile.path;
       }
       
-      // Save file content
-      await nativeFs.writeToFile(filePath, content);
       
-      // Get updated file info with new content
+      const cleanContent = String(content);
+      
+      // Save file content
+      await nativeFs.writeToFile(filePath, cleanContent);
+      
+      let savedContent = "";
+      try {
+        savedContent = await nativeFs.readFile(filePath);
+      } catch (error) {
+        console.error('[FileService] Error verifying saved content:', error);
+      }
+      
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
+        const actualContent = fileInfo.content.length > 0 ? fileInfo.content : 
+                             (savedContent.length > 0 ? savedContent : content);
         
-        // Tworzymy kopię głęboką, aby zapobiec współdzielonym referencjom
         const updatedFile: FileInfo = {
           id: saveAs ? fileInfo.id : (this.currentFile?.id || fileInfo.id), // Zachowaj id jeśli to ten sam plik
           path: fileInfo.path,
           name: fileInfo.name,
-          content: fileInfo.content,
+          content: actualContent,
           isUnsaved: false
         };
+        
+        console.log(`[FileService] Returning updated file info with content length: ${updatedFile.content.length}`);
         
         this.currentFile = updatedFile;
         return updatedFile;
       } catch (error) {
-        console.error('Error getting file info after save, falling back to JS implementation:', error);
+        console.error('[FileService] Error getting file info after save, falling back to JS implementation:', error);
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
         
-        // Zachowaj to samo id jeśli zapisujemy ten sam plik, a wygeneruj nowe jeśli to "Zapisz jako"
         const id = saveAs 
           ? `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`
           : (this.currentFile?.id || `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`);
@@ -368,15 +401,17 @@ export class FileService {
           id,
           path: filePath,
           name: fileName,
-          content,
+          content, 
           isUnsaved: false
         };
+        
+        console.log(`[FileService] Returning file info from fallback with content length: ${updatedFile.content.length}`);
         
         this.currentFile = updatedFile;
         return updatedFile;
       }
     } catch (error) {
-      console.error('Error saving file:', error);
+      console.error('[FileService] Error saving file:', error);
       throw error;
     }
   }

@@ -33,32 +33,27 @@ interface TerminalInstance {
   processName: string;
 }
 
-// Wydzielamy oddzielny komponent dla edytora kodu, który będzie memoizowany na najwyższym poziomie
 const EditorContainer = memo(({ file, language, onChangeContent, onSave }: {
     file: FileInfo;
     language: string;
     onChangeContent: (content: string) => void;
     onSave: () => void;
 }) => {
-    console.log('EditorContainer render', { 
-        fileId: file.id,
-        filePath: file.path, 
-        language
-    });
     
-    // Tworzenie funkcji handleChange i handleSave jest tutaj bezpieczne,
-    // ponieważ cały komponent jest memoizowany
+    const currentContentRef = useRef(file.content);
+    
     const handleChange = (content: string) => {
-        console.log('handleChange in EditorContainer', { 
-            contentLength: content.length, 
-            contentPreview: content.substring(0, 20) + '...'
-        });
+        currentContentRef.current = content;
         onChangeContent(content);
     };
     
     const handleSave = () => {
-        console.log('handleSave in EditorContainer');
         onSave();
+        
+        const editorContainer = document.querySelector('[data-editor-container]');
+        if (editorContainer) {
+            (editorContainer as any).__currentContent = currentContentRef.current;
+        }
     };
     
     return (
@@ -70,21 +65,10 @@ const EditorContainer = memo(({ file, language, onChangeContent, onSave }: {
         />
     );
 }, (prevProps, nextProps) => {
-    // Komponent zostanie przerenderowany tylko jeśli zmieni się ID pliku,
-    // ścieżka pliku, język lub zawartość
     const isEqual = prevProps.file.id === nextProps.file.id &&
                    prevProps.file.path === nextProps.file.path &&
                    prevProps.language === nextProps.language;
     
-    console.log('EditorContainer memo check', { 
-        isEqual,
-        prevId: prevProps.file.id,
-        nextId: nextProps.file.id,
-        prevPath: prevProps.file.path,
-        nextPath: nextProps.file.path,
-        prevLanguage: prevProps.language,
-        nextLanguage: nextProps.language
-    });
     
     return isEqual;
 });
@@ -107,24 +91,25 @@ function MainContent() {
     const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
     
     const handleContentChange = useCallback((content: string) => {
-        console.log('handleContentChange in App', { 
-            contentLength: content.length, 
-            contentPreview: content.substring(0, 20) + '...',
-            currentFileId: currentFile?.id,
-            currentFilePath: currentFile?.path
-        });
         updateFileContent(content);
     }, [updateFileContent]);
 
     const handleSaveFile = useCallback(() => {
         if (currentFile) {
-            console.log('Saving file:', {
-                path: currentFile.path,
-                id: currentFile.id,
-                contentLength: currentFile.content.length,
-                contentPreview: currentFile.content.substring(0, 20) + '...'
-            });
-            saveFile(currentFile.content);
+    
+            let contentToSave = currentFile.content;
+            
+            const editorContainer = document.querySelector('[data-editor-container]') as any;
+            if (editorContainer && editorContainer.__currentContent) {
+                contentToSave = editorContainer.__currentContent;
+            }
+            else if (contentToSave.length === 0 && editorContainer) {
+                const editorContent = editorContainer.querySelector('.cm-content')?.textContent;
+                if (editorContent && editorContent.length > 0) {
+                    contentToSave = editorContent;
+                }
+            }
+            saveFile(contentToSave);
         }
     }, [saveFile, currentFile?.id, currentFile?.path]);
     
@@ -185,15 +170,8 @@ function MainContent() {
         currentFile ? getLanguageFromExtension(currentFile.name) : 'typescript',
     [currentFile?.name, getLanguageFromExtension]);
 
-    // Kontener dla edytora który będzie stabilnym elementem drzewa DOM
     const EditorContentArea = useMemo(() => {
-        console.log('Rendering EditorContentArea', {
-            hasCurrentFile: Boolean(currentFile),
-            filePath: currentFile?.path,
-            fileId: currentFile?.id,
-            language: fileLanguage
-        });
-        
+       
         if (!currentFile) {
             return (
                 <div className="flex h-full items-center justify-center">
@@ -220,7 +198,6 @@ function MainContent() {
             );
         }
         
-        // Zabezpieczenie przed niezdefiniowanym plikiem
         return (
             <EditorContainer
                 file={currentFile}
@@ -230,7 +207,7 @@ function MainContent() {
             />
         );
     }, [
-        currentFile?.id, // Główna zależność - zmiana tylko gdy zmienia się plik
+        currentFile?.id,
         fileLanguage,
         handleContentChange,
         handleSaveFile,

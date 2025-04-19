@@ -217,41 +217,37 @@ export const useFileStore = create<FileState>((set, get) => {
 
     saveFile: async (content) => {
       try {
-        console.log('saveFile in store started', { contentLength: content.length });
         
-        // Get the current state
         const { currentFile, openFiles } = get();
         if (!currentFile) {
-          console.log('No current file to save');
           return null;
         }
         
-        // Only save if content matches what we have in our store
         if (currentFile.content !== content) {
-          console.log('Content mismatch, updating content before saving');
           currentFile.content = content;
+          
+          const fileIndex = openFiles.findIndex(f => f.path === currentFile.path);
+          if (fileIndex !== -1) {
+            openFiles[fileIndex].content = content;
+          }
+        }
+        
+        if (content.length === 0 && currentFile.content.length > 0) {
+          console.warn('Warning: About to save empty content but currentFile has content. Using currentFile content instead.');
+          content = currentFile.content;
         }
         
         const file = await fileService.saveFile(content, false);
         if (file) {
-          console.log('File saved by fileService, updating state', {
-            path: file.path,
-            contentLength: file.content.length
-          });
           
-          // Set the file as not unsaved without triggering unnecessary re-renders
           currentFile.isUnsaved = false;
           
-          // Check if we need to update the store state (only if openFiles refs weren't updated)
           const needsStateUpdate = openFiles.some(f => 
             f.path === file.path && f.isUnsaved === true
           );
           
           if (needsStateUpdate) {
-            console.log('Updating store state to mark file as saved');
             set((state) => {
-              // Use functional update to avoid unnecessary re-renders
-              // Only update the isUnsaved flag, don't replace file objects entirely
               return {
                 openFiles: state.openFiles.map(f =>
                   f.path === file.path ? { ...f, isUnsaved: false } : f
@@ -263,7 +259,6 @@ export const useFileStore = create<FileState>((set, get) => {
           }
         }
         
-        console.log('saveFile in store completed');
         return file;
       } catch (error) {
         console.error('Error in saveFile:', error);
@@ -287,7 +282,6 @@ export const useFileStore = create<FileState>((set, get) => {
       const { currentFile, openFiles } = get();
       if (!currentFile) return;
 
-      // Zamiast bezpośrednio aktualizować obiekt, tworzymy nową głęboką kopię
       const updatedFile: FileInfo = {
         id: currentFile.id,
         path: currentFile.path,
@@ -304,7 +298,6 @@ export const useFileStore = create<FileState>((set, get) => {
           const fileInState = state.openFiles.find(f => f.path === currentFile.path);
           
           if (!fileInState || !fileInState.isUnsaved || fileInState.content !== content) {
-            // Tworzymy nową tablicę obiektów, każdy z nich jest głęboką kopią
             const newOpenFiles = state.openFiles.map(file =>
               file.path === currentFile.path
                 ? { ...updatedFile }
@@ -320,7 +313,6 @@ export const useFileStore = create<FileState>((set, get) => {
           return state;
         });
       } else {
-        // Nawet jeśli nie aktualizujemy stanu zustand, aktualizujemy lokalną referencję currentFile
         set({ currentFile: updatedFile });
       }
     },
@@ -383,31 +375,23 @@ export const useFileStore = create<FileState>((set, get) => {
 
     closeFile: (filePath) => {
       set((state) => {
-        // Filtrujemy plik do zamknięcia z listy otwartych plików
         const newOpenFiles = state.openFiles
           .filter(file => file.path !== filePath)
-          // Stosujemy głębokie kopiowanie dla pozostałych plików, aby uniknąć współdzielenia referencji
           .map(file => ({ ...file }));
         
-        // Ustalamy nowy bieżący plik, jeśli zamykamy aktualnie aktywny
         let newCurrentFile = state.currentFile;
         let newActiveFilePath = state.activeFilePath;
         
         if (state.activeFilePath === filePath) {
-          // Jeśli zamykamy aktywny plik, wybieramy ostatni z listy otwartych
           if (newOpenFiles.length > 0) {
             const lastFile = newOpenFiles[newOpenFiles.length - 1];
-            // Tworzymy głęboką kopię ostatniego pliku jako nowy bieżący plik
             newCurrentFile = { ...lastFile };
             newActiveFilePath = lastFile.path;
           } else {
-            // Jeśli nie ma innych otwartych plików, ustawiamy na null
             newCurrentFile = null;
             newActiveFilePath = null;
           }
         } else if (state.currentFile?.path === filePath) {
-          // Jeśli zamykamy bieżący plik, ale nie jest on aktywny
-          // Szukamy aktywnego pliku w liście otwartych
           const activeFile = newOpenFiles.find(f => f.path === state.activeFilePath);
           if (activeFile) {
             newCurrentFile = { ...activeFile };
@@ -428,7 +412,6 @@ export const useFileStore = create<FileState>((set, get) => {
       set((state) => {
         const file = state.openFiles.find(f => f.path === filePath);
         if (file) {
-          // Tworzymy głęboką kopię pliku, aby uniknąć współdzielenia referencji
           const fileDeepCopy = { ...file };
           return {
             currentFile: fileDeepCopy,
@@ -467,36 +450,28 @@ export const useFileStore = create<FileState>((set, get) => {
           window.alert("Directory paste operations are not fully implemented yet.");
           return;
         } else {
-          // Kopiowanie pliku
-          await nativeFs.copyFile(clipboard.path, destinationPath);
+          const fileContent = await nativeFs.readFile(clipboard.path);
           
-          // Jeśli to operacja wycinania, usuń plik źródłowy i wyczyść schowek
+          await nativeFs.createFile(destinationPath, fileContent);
+          
           if (clipboard.type === 'cut') {
             await nativeFs.deletePath(clipboard.path, false);
             set({ clipboard: { type: null, path: null } });
           }
           
-          // Po skopiowaniu, jeśli plik jest otwarty, upewnij się, że ma nowy identyfikator
-          // dzięki temu skopiowany plik będzie traktowany jako całkowicie nowy obiekt
           const { openFiles } = get();
           const sourceFileIdx = openFiles.findIndex(f => f.path === clipboard.path);
           
           if (sourceFileIdx !== -1 && clipboard.type === 'copy') {
-            // Źródłowy plik jest otwarty i wykonujemy kopiowanie (nie wycinanie)
-            // Jeśli później zostanie otwarty skopiowany plik, będzie miał nowy identyfikator
-            // przypisany przez funkcję openFileFromPath dzięki wcześniejszym modyfikacjom
             console.log('Source file is opened, ensuring destination file will get a new ID when opened');
           }
         }
 
-        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość docelowego katalogu
         try {
-          // Uzyskaj zawartość docelowego katalogu
           const parentDir = await dirname(destinationPath);
           const parentContents = await fileService.loadDirectoryContents(parentDir);
           
           if (parentContents) {
-            // Aktualizujemy tylko zawartość docelowego katalogu
             set((state) => {
               const updateDirectoryStructure = (
                 items: DirectoryItem[] | undefined
@@ -528,10 +503,8 @@ export const useFileStore = create<FileState>((set, get) => {
               };
             });
             
-            // Jeśli to była operacja wycinania, musimy również zaktualizować katalog źródłowy
             if (clipboard.type === 'cut') {
               const sourceDir = await dirname(clipboard.path);
-              // Aktualizujemy tylko jeśli katalog źródłowy jest różny od docelowego
               if (sourceDir !== parentDir) {
                 const sourceContents = await fileService.loadDirectoryContents(sourceDir);
                 
@@ -572,7 +545,6 @@ export const useFileStore = create<FileState>((set, get) => {
           }
         } catch (error) {
           console.error('Error updating directory contents after paste:', error);
-          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
           await get().refreshDirectoryStructure();
         }
       } catch (error) {
@@ -630,7 +602,6 @@ export const useFileStore = create<FileState>((set, get) => {
         
         await nativeFs.renamePath(path, newPath);
         
-        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość nadrzędnego katalogu
         try {
           const parentContents = await fileService.loadDirectoryContents(dir);
           
@@ -668,30 +639,25 @@ export const useFileStore = create<FileState>((set, get) => {
           }
         } catch (error) {
           console.error('Error updating directory contents after rename:', error);
-          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
           await get().refreshDirectoryStructure();
         }
         
         const { openFiles, currentFile } = get();
         if (!isDirectory && openFiles.some(f => f.path === path)) {
           set((state) => {
-            // Tworzymy nowe głębokie kopie obiektów, aby uniknąć współdzielonych referencji
             const newOpenFiles = state.openFiles.map(f => {
               if (f.path === path) {
-                // Dla zmienianego pliku tworzymy nowy obiekt z nową ścieżką i nazwą
                 return {
-                  id: f.id, // Zachowujemy to samo id, bo to ten sam plik
+                  id: f.id,
                   path: newPath,
                   name: newName,
                   content: f.content,
                   isUnsaved: f.isUnsaved
                 };
               }
-              // Dla innych plików tworzymy również kopie, aby uniknąć współdzielenia referencji
               return { ...f };
             });
             
-            // Tworzymy głęboką kopię currentFile, jeśli jest zmienianym plikiem
             const newCurrentFile = currentFile?.path === path 
               ? {
                   id: currentFile.id,
@@ -713,7 +679,6 @@ export const useFileStore = create<FileState>((set, get) => {
         get().closeRenameDialog();
       } catch (error: any) {
         console.error('Error renaming item:', error);
-        // Show error message to user
         window.alert(`Error renaming: ${error.message || 'Unknown error'}`);
         get().closeRenameDialog();
       }
@@ -738,7 +703,6 @@ export const useFileStore = create<FileState>((set, get) => {
           return;
         }
         
-        // Pobieramy ścieżkę do katalogu nadrzędnego przed usunięciem
         const parentDir = await dirname(path);
         
         await nativeFs.deletePath(path, true);
@@ -747,7 +711,6 @@ export const useFileStore = create<FileState>((set, get) => {
           get().closeFile(path);
         }
         
-        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość nadrzędnego katalogu
         try {
           const parentContents = await fileService.loadDirectoryContents(parentDir);
           

@@ -161,6 +161,7 @@ npm run tauri build
 ## Roadmap
 
 ### High Priority
+- [ ] Moving all CPU heavy functions on backend side
 - [ ] LSP Server integration for enhanced language support
 - [ ] Git integration with full GitHub support
 - [ ] Settings panel with comprehensive configuration options

@@ -31,6 +31,7 @@ pub fn run() {
             terminal::load_command_history,
             terminal::send_terminal_signal,
             terminal::has_child_process,
+            terminal::detect_terminal_urls,
             fs::create_directory,
             fs::create_file,
             fs::read_file,
@@ -47,7 +48,9 @@ pub fn run() {
             fs::is_image_file,
             fs::is_audio_file,
             fs::search_file_contents,
-            fs::search_files_by_name
+            fs::search_files_by_name,
+            fs::search_file_contents_advanced,
+            fs::search_files_by_name_advanced
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

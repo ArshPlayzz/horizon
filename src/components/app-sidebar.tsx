@@ -53,6 +53,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const searchingIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTab, setActiveTab] = useState<string>("files");
 
   useEffect(() => {
@@ -65,6 +66,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       document.removeEventListener('toggle-sidebar', handleToggleSidebar);
     };
   }, [toggleSidebar]);
+
+  useEffect(() => {
+    if (activeTab !== "search") {
+      setIsSearchMode(false);
+    }
+  }, [activeTab]);
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
@@ -90,7 +97,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const performSearch = async (query: string) => {
     if (!query.trim()) return;
     
-    setIsSearching(true);
+    if (searchingIndicatorTimeoutRef.current) {
+      clearTimeout(searchingIndicatorTimeoutRef.current);
+    }
+    
+    searchingIndicatorTimeoutRef.current = setTimeout(() => {
+      setIsSearching(true);
+    }, 300);
     
     try {
       const fileNameResults = await searchFiles(query);
@@ -111,6 +124,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     } catch (error) {
       console.error('Error during search:', error);
     } finally {
+      if (searchingIndicatorTimeoutRef.current) {
+        clearTimeout(searchingIndicatorTimeoutRef.current);
+        searchingIndicatorTimeoutRef.current = null;
+      }
       setIsSearching(false);
     }
   };
@@ -119,6 +136,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     return () => {
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current);
+      }
+      if (searchingIndicatorTimeoutRef.current) {
+        clearTimeout(searchingIndicatorTimeoutRef.current);
       }
     };
   }, []);
@@ -129,6 +149,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     setIsSearchMode(false);
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
+    }
+    if (searchingIndicatorTimeoutRef.current) {
+      clearTimeout(searchingIndicatorTimeoutRef.current);
     }
   };
 
@@ -324,7 +347,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             className="flex items-center justify-center hover:text-foreground transition-colors" 
                             onClick={clearSearch}
                           >
-                            <IconX className="h-4 w-4 text-muted-foreground" />
+                            <IconX className="h-4 w-4 text-muted-foreground cursor-pointer" />
                           </button>
                         </div>
                       )}
@@ -442,7 +465,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
   const isLoading = item.isDirectory && isExpanded && item.needsLoading;
   
   return (
-    <div className="pl-1 max-w-[17rem]">
+    <div className="pl-1 max-w-[16rem]">
       <DropdownMenu 
         open={!!contextMenuPosition} 
         onOpenChange={(open) => {

@@ -33,6 +33,19 @@ export interface DirectoryItem {
   item_type: string;
   children?: DirectoryItem[];
   needs_loading?: boolean;
+  isDirectory: boolean;
+  type: string;
+}
+
+/**
+ * Search match result with context information
+ */
+export interface MatchResult {
+  path: string;
+  name: string;
+  line_number: number;
+  preview_text: string;
+  is_directory: boolean;
 }
 
 /**
@@ -190,6 +203,34 @@ export async function searchFileContents(query: string, dirPath: string, maxResu
 }
 
 /**
+ * Advanced search for file contents with regex and filtering options
+ * @param query - Search query (regex supported)
+ * @param dirPath - Directory path to search in
+ * @param maxResults - Maximum number of results (default: 20)
+ * @param ignoreCase - Whether to ignore case in search (default: true)
+ * @param includePatterns - Optional glob patterns to include
+ * @param excludePatterns - Optional glob patterns to exclude
+ * @returns Promise that resolves to match results with context
+ */
+export async function searchFileContentsAdvanced(
+  query: string, 
+  dirPath: string, 
+  maxResults: number = 20,
+  ignoreCase: boolean = true,
+  includePatterns?: string[],
+  excludePatterns?: string[]
+): Promise<MatchResult[]> {
+  return invoke('search_file_contents_advanced', { 
+    query, 
+    dirPath, 
+    maxResults,
+    ignoreCase,
+    includePatterns,
+    excludePatterns
+  });
+}
+
+/**
  * Search files by name
  * @param query - Search query
  * @param dirPath - Directory path to search in
@@ -198,4 +239,29 @@ export async function searchFileContents(query: string, dirPath: string, maxResu
  */
 export async function searchFilesByName(query: string, dirPath: string, maxResults: number = 20): Promise<DirectoryItem[]> {
   return invoke('search_files_by_name', { query, dirPath, maxResults });
+}
+
+/**
+ * Advanced search for files by name with filtering options
+ * @param query - Search query
+ * @param dirPath - Directory path to search in
+ * @param maxResults - Maximum number of results (default: 20)
+ * @param includePatterns - Optional glob patterns to include
+ * @param excludePatterns - Optional glob patterns to exclude
+ * @returns Promise that resolves to items matching the query
+ */
+export async function searchFilesByNameAdvanced(
+  query: string,
+  dirPath: string,
+  maxResults: number = 20,
+  includePatterns?: string[],
+  excludePatterns?: string[]
+): Promise<DirectoryItem[]> {
+  return invoke('search_files_by_name_advanced', { 
+    query, 
+    dirPath, 
+    maxResults,
+    includePatterns,
+    excludePatterns
+  });
 } 

@@ -1,8 +1,13 @@
 /// File system operations module
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io::Write;
 use tauri::command;
+use grep_regex::RegexMatcher;
+use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkMatch, SinkContext, BinaryDetection};
+use std::sync::{Arc, Mutex};
+use walkdir::WalkDir;
+use globset::{Glob, GlobSetBuilder, GlobSet};
 
 /// Create a new directory at the specified path
 /// 
@@ -368,166 +373,339 @@ pub fn is_audio_file(path: String) -> bool {
     extensions.iter().any(|ext| path_lower.ends_with(ext))
 }
 
-/// Search file contents
+/// Search file contents with advanced features
 /// 
 /// # Arguments
-/// * `query` - The search query
+/// * `query` - The search query (regex supported)
 /// * `dir_path` - The directory path to search in
 /// * `max_results` - Maximum number of results to return
+/// * `ignore_case` - Whether to ignore case in search
+/// * `include_patterns` - Optional glob patterns to include
+/// * `exclude_patterns` - Optional glob patterns to exclude
 /// 
 /// # Returns
-/// A vector of items containing the search query
+/// A vector of items matching the query with preview text
 #[command]
-pub fn search_file_contents(query: String, dir_path: String, max_results: u32) -> Result<Vec<DirectoryItem>, String> {
+pub fn search_file_contents_advanced(
+    query: String, 
+    dir_path: String, 
+    max_results: u32,
+    ignore_case: bool,
+    include_patterns: Option<Vec<String>>,
+    exclude_patterns: Option<Vec<String>>
+) -> Result<Vec<MatchResult>, String> {
     if query.is_empty() || dir_path.is_empty() {
         return Ok(Vec::new());
     }
     
-    let query_lower = query.to_lowercase();
-    let mut results = Vec::new();
-    let mut results_count = 0;
+    // Compile glob patterns
+    let include_glob = compile_glob_patterns(include_patterns)?;
+    let exclude_glob = compile_glob_patterns(exclude_patterns)?;
     
-    // Get the directory structure first
-    let items = scan_directory(dir_path, 0, 1)?;
+    // Create regex matcher with case sensitivity based on parameter
+    let matcher = if ignore_case {
+        RegexMatcher::new_line_matcher(&format!("(?i){}", query))
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?
+    } else {
+        RegexMatcher::new_line_matcher(&query)
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?
+    };
     
-    // Search through the structure recursively
-    search_in_items(&items, &query_lower, &mut results, &mut results_count, max_results)?;
+    // Configure the searcher parameters
+    let mut builder = SearcherBuilder::new();
+    let searcher_config = builder
+        .binary_detection(BinaryDetection::quit(b'\x00'))
+        .line_number(true);
     
-    Ok(results)
-}
-
-/// Helper function to search file contents recursively
-fn search_in_items(
-    items: &[DirectoryItem], 
-    query: &str, 
-    results: &mut Vec<DirectoryItem>,
-    results_count: &mut u32,
-    max_results: u32
-) -> Result<(), String> {
-    if *results_count >= max_results {
-        return Ok(());
-    }
+    // Use a shared vector to collect results
+    let matches = Arc::new(Mutex::new(Vec::<MatchResult>::new()));
+    let match_count = Arc::new(Mutex::new(0_u32));
+    let max_results = max_results;
     
-    for item in items {
-        if *results_count >= max_results {
+    // Walk directory tree and search files
+    for entry in WalkDir::new(&dir_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file() && 
+            !is_ignored_file(e.path()) &&
+            (include_glob.is_none() || 
+             include_glob.as_ref().unwrap().is_match(e.path())) &&
+            !(exclude_glob.is_some() && 
+              exclude_glob.as_ref().unwrap().is_match(e.path()))
+        }) 
+    {
+        // Stop if we've reached max results
+        if *match_count.lock().unwrap() >= max_results {
             break;
         }
         
-        if !item.is_directory {
-            // Skip binary files, large files, and system files
-            if should_skip_file(&item.path) {
-                continue;
-            }
-            
-            // Read and search the file
-            match fs::read_to_string(&item.path) {
-                Ok(content) => {
-                    if content.to_lowercase().contains(query) {
-                        results.push(item.clone());
-                        *results_count += 1;
-                    }
-                },
-                Err(_) => {
-                    // Skip files that can't be read as text
-                    continue;
-                }
-            }
-        } else if let Some(children) = &item.children {
-            // Recursively search subdirectories
-            search_in_items(children, query, results, results_count, max_results)?;
+        let path = entry.path();
+        let matches_clone = Arc::clone(&matches);
+        let match_count_clone = Arc::clone(&match_count);
+        
+        let sink = ResultSink::new(path, max_results, matches_clone, match_count_clone);
+        
+        // Create a new searcher for each file
+        let mut searcher = searcher_config.build();
+        
+        // Search the file and collect results
+        if searcher.search_path(&matcher, path, sink).is_err() {
+            // Skip files that can't be searched (binary, etc.)
+            continue;
         }
     }
     
-    Ok(())
+    // Return the collected results
+    let results = matches.lock().unwrap().clone();
+    Ok(results)
 }
 
-/// Helper function to determine if a file should be skipped during search
-fn should_skip_file(path: &str) -> bool {
+/// Structure to represent a search match with context
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct MatchResult {
+    pub path: String,
+    pub name: String,
+    pub line_number: u64,
+    pub preview_text: String,
+    pub is_directory: bool,
+}
+
+/// Custom sink implementation for grep-searcher
+struct ResultSink {
+    path: PathBuf,
+    matches: Arc<Mutex<Vec<MatchResult>>>,
+    match_count: Arc<Mutex<u32>>,
+    max_matches: u32,
+}
+
+impl ResultSink {
+    fn new(
+        path: &Path, 
+        max_matches: u32,
+        matches: Arc<Mutex<Vec<MatchResult>>>,
+        match_count: Arc<Mutex<u32>>
+    ) -> Self {
+        ResultSink {
+            path: path.to_path_buf(),
+            matches,
+            match_count,
+            max_matches,
+        }
+    }
+}
+
+impl Sink for ResultSink {
+    type Error = std::io::Error;
+
+    fn matched(&mut self, _searcher: &Searcher, mat: &SinkMatch) -> Result<bool, Self::Error> {
+        let mut match_count = self.match_count.lock().unwrap();
+        if *match_count >= self.max_matches {
+            return Ok(false);
+        }
+        
+        let line_text = String::from_utf8_lossy(mat.bytes()).to_string();
+        let trimmed_text = line_text.trim();
+        
+        let name = self.path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+            
+        let path_str = self.path.to_string_lossy().to_string();
+        
+        let mut matches = self.matches.lock().unwrap();
+        matches.push(MatchResult {
+            path: path_str,
+            name,
+            line_number: mat.line_number().unwrap_or(0),
+            preview_text: trimmed_text.to_string(),
+            is_directory: false,
+        });
+        
+        *match_count += 1;
+        Ok(true)
+    }
+
+    fn context(&mut self, _searcher: &Searcher, _ctx: &SinkContext) -> Result<bool, Self::Error> {
+        // We're not handling context lines for now
+        Ok(true)
+    }
+    
+    fn finish(&mut self, _searcher: &Searcher, _finish: &grep_searcher::SinkFinish) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// Helper function to compile glob patterns
+fn compile_glob_patterns(patterns: Option<Vec<String>>) -> Result<Option<GlobSet>, String> {
+    if let Some(patterns) = patterns {
+        if patterns.is_empty() {
+            return Ok(None);
+        }
+        
+        let mut builder = GlobSetBuilder::new();
+        for pattern in patterns {
+            let glob = Glob::new(&pattern)
+                .map_err(|e| format!("Invalid glob pattern '{}': {}", pattern, e))?;
+            builder.add(glob);
+        }
+        
+        let globset = builder.build()
+            .map_err(|e| format!("Failed to compile glob patterns: {}", e))?;
+            
+        Ok(Some(globset))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Helper function to determine if a file should be ignored
+fn is_ignored_file(path: &Path) -> bool {
     // Skip based on extension
     let skip_extensions = [
         ".exe", ".dll", ".so", ".dylib", ".bin", ".dat", 
-        ".avi", ".mov", ".pdf"
+        ".avi", ".mov", ".mp4", ".mkv", ".pdf", ".zip", 
+        ".rar", ".tar", ".gz", ".7z"
     ];
     
-    let path_lower = path.to_lowercase();
-    for ext in skip_extensions.iter() {
-        if path_lower.ends_with(ext) {
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        if skip_extensions.iter().any(|&s| s.ends_with(&format!(".{}", ext.to_lowercase()))) {
             return true;
         }
     }
     
-    // Skip based on file size
-    match fs::metadata(path) {
-        Ok(metadata) => {
-            // Skip files larger than 1MB
-            if metadata.len() > 1024 * 1024 {
-                return true;
-            }
-        },
-        Err(_) => return true, // Skip if we can't get metadata
+    // Skip hidden files and directories
+    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        if file_name.starts_with(".") {
+            return true;
+        }
+    }
+    
+    // Skip large files
+    if let Ok(metadata) = fs::metadata(path) {
+        if metadata.len() > 5 * 1024 * 1024 {  // Skip files larger than 5MB
+            return true;
+        }
+    } else {
+        return true; // Skip if we can't get metadata
     }
     
     false
 }
 
-/// Search files by name
+/// Search files by name with advanced features
 /// 
 /// # Arguments
 /// * `query` - The search query
 /// * `dir_path` - The directory path to search in
 /// * `max_results` - Maximum number of results to return
+/// * `include_patterns` - Optional glob patterns to include
+/// * `exclude_patterns` - Optional glob patterns to exclude
 /// 
 /// # Returns
-/// A vector of items matching the query
+/// A vector of items matching the query in name
 #[command]
-pub fn search_files_by_name(query: String, dir_path: String, max_results: u32) -> Result<Vec<DirectoryItem>, String> {
+pub fn search_files_by_name_advanced(
+    query: String,
+    dir_path: String,
+    max_results: u32,
+    include_patterns: Option<Vec<String>>,
+    exclude_patterns: Option<Vec<String>>
+) -> Result<Vec<DirectoryItem>, String> {
     if query.is_empty() || dir_path.is_empty() {
         return Ok(Vec::new());
     }
+    
+    // Compile glob patterns
+    let include_glob = compile_glob_patterns(include_patterns)?;
+    let exclude_glob = compile_glob_patterns(exclude_patterns)?;
     
     let query_lower = query.to_lowercase();
     let mut results = Vec::new();
     let mut results_count = 0;
     
-    // Get the directory structure first
-    let items = scan_directory(dir_path, 0, 10)?; // Scan deeper for better results
-    
-    // Search through the structure recursively
-    search_files_by_name_in_items(&items, &query_lower, &mut results, &mut results_count, max_results)?;
+    // Walk directory tree and match file names
+    for entry in WalkDir::new(&dir_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            (include_glob.is_none() || 
+             include_glob.as_ref().unwrap().is_match(e.path())) &&
+            !(exclude_glob.is_some() && 
+              exclude_glob.as_ref().unwrap().is_match(e.path()))
+        }) 
+    {
+        if results_count >= max_results {
+            break;
+        }
+        
+        let path = entry.path();
+        let name = path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        
+        // Check if the name matches the query
+        if name.to_lowercase().contains(&query_lower) {
+            let is_dir = entry.file_type().is_dir();
+            let item_type = if is_dir { "directory" } else { "file" };
+            
+            results.push(DirectoryItem {
+                name: name.clone(),
+                path: path.to_string_lossy().to_string(),
+                is_directory: is_dir,
+                item_type: item_type.to_string(),
+                children: None,
+                needs_loading: if is_dir { Some(true) } else { None },
+            });
+            
+            results_count += 1;
+        }
+    }
     
     Ok(results)
 }
 
-/// Helper function to search files by name recursively
-fn search_files_by_name_in_items(
-    items: &[DirectoryItem], 
-    query: &str, 
-    results: &mut Vec<DirectoryItem>,
-    results_count: &mut u32,
-    max_results: u32
-) -> Result<(), String> {
-    if *results_count >= max_results {
-        return Ok(());
-    }
+/// Maintain backward compatibility with existing API
+#[command]
+pub fn search_file_contents(query: String, dir_path: String, max_results: u32) -> Result<Vec<DirectoryItem>, String> {
+    // Call the advanced version with default parameters
+    let results = search_file_contents_advanced(
+        query,
+        dir_path,
+        max_results,
+        true,  // ignore_case = true
+        None,  // include_patterns = None
+        None   // exclude_patterns = None
+    )?;
     
-    for item in items {
-        if *results_count >= max_results {
-            break;
-        }
-        
-        // Check if the name of the item contains the query
-        if item.name.to_lowercase().contains(query) {
-            results.push(item.clone());
-            *results_count += 1;
-        }
-        
-        // Continue searching in subdirectories
-        if item.is_directory {
-            if let Some(children) = &item.children {
-                search_files_by_name_in_items(children, query, results, results_count, max_results)?;
-            }
-        }
-    }
+    // Convert MatchResult to DirectoryItem
+    let directory_items: Vec<DirectoryItem> = results.into_iter()
+        .map(|result| DirectoryItem {
+            name: result.name,
+            path: result.path,
+            is_directory: result.is_directory,
+            item_type: if result.is_directory { "directory".to_string() } else { "file".to_string() },
+            children: None,
+            needs_loading: if result.is_directory { Some(true) } else { None },
+        })
+        .collect();
     
-    Ok(())
+    Ok(directory_items)
+}
+
+/// Maintain backward compatibility with existing API
+#[command]
+pub fn search_files_by_name(query: String, dir_path: String, max_results: u32) -> Result<Vec<DirectoryItem>, String> {
+    // Call the advanced version with default parameters
+    search_files_by_name_advanced(
+        query,
+        dir_path,
+        max_results,
+        None,  // include_patterns = None
+        None   // exclude_patterns = None
+    )
 } 

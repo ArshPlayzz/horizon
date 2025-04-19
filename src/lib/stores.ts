@@ -120,24 +120,33 @@ export const useFileStore = create<FileState>((set, get) => {
     const { openFiles } = get();
     const existingFileIndex = openFiles.findIndex(f => f.path === file.path);
     
+    // Tworzymy głęboką kopię obiektu file, aby uniknąć współdzielonych referencji
+    const fileDeepCopy: FileInfo = {
+      id: file.id,
+      path: file.path,
+      name: file.name,
+      content: file.content,
+      isUnsaved: file.isUnsaved || false
+    };
+    
     if (existingFileIndex === -1) {
       if (openFiles.length >= 3) {
         const newestFile = openFiles[openFiles.length - 1];
         get().closeFile(newestFile.path);
       }
       set((state) => ({
-        openFiles: [...state.openFiles, file],
-        currentFile: file,
-        activeFilePath: file.path
+        openFiles: [...state.openFiles, fileDeepCopy],
+        currentFile: fileDeepCopy,
+        activeFilePath: fileDeepCopy.path
       }));
     } else {
       set((state) => {
         const newFiles = [...state.openFiles];
-        newFiles[existingFileIndex] = file;
+        newFiles[existingFileIndex] = fileDeepCopy;
         return {
           openFiles: newFiles,
-          currentFile: file,
-          activeFilePath: file.path
+          currentFile: fileDeepCopy,
+          activeFilePath: fileDeepCopy.path
         };
       });
     }
@@ -278,8 +287,14 @@ export const useFileStore = create<FileState>((set, get) => {
       const { currentFile, openFiles } = get();
       if (!currentFile) return;
 
-      currentFile.content = content;
-      currentFile.isUnsaved = true;
+      // Zamiast bezpośrednio aktualizować obiekt, tworzymy nową głęboką kopię
+      const updatedFile: FileInfo = {
+        id: currentFile.id,
+        path: currentFile.path,
+        name: currentFile.name,
+        content: content,
+        isUnsaved: true
+      };
 
       const existingFile = openFiles.find(file => file.path === currentFile.path);
       const needsUpdate = !existingFile || !existingFile.isUnsaved || existingFile.content !== content;
@@ -289,17 +304,24 @@ export const useFileStore = create<FileState>((set, get) => {
           const fileInState = state.openFiles.find(f => f.path === currentFile.path);
           
           if (!fileInState || !fileInState.isUnsaved || fileInState.content !== content) {
+            // Tworzymy nową tablicę obiektów, każdy z nich jest głęboką kopią
+            const newOpenFiles = state.openFiles.map(file =>
+              file.path === currentFile.path
+                ? { ...updatedFile }
+                : { ...file }
+            );
+            
             return {
-              openFiles: state.openFiles.map(file =>
-                file.path === currentFile.path
-                  ? { ...file, content, isUnsaved: true }
-                  : file
-              )
+              openFiles: newOpenFiles,
+              currentFile: updatedFile
             };
           }
           
           return state;
         });
+      } else {
+        // Nawet jeśli nie aktualizujemy stanu zustand, aktualizujemy lokalną referencję currentFile
+        set({ currentFile: updatedFile });
       }
     },
 
@@ -361,13 +383,38 @@ export const useFileStore = create<FileState>((set, get) => {
 
     closeFile: (filePath) => {
       set((state) => {
-        const newOpenFiles = state.openFiles.filter(file => file.path !== filePath);
-        const newCurrentFile = state.activeFilePath === filePath
-          ? (newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1] : null)
-          : state.currentFile;
-        const newActiveFilePath = state.activeFilePath === filePath
-          ? (newOpenFiles.length > 0 ? newOpenFiles[newOpenFiles.length - 1].path : null)
-          : state.activeFilePath;
+        // Filtrujemy plik do zamknięcia z listy otwartych plików
+        const newOpenFiles = state.openFiles
+          .filter(file => file.path !== filePath)
+          // Stosujemy głębokie kopiowanie dla pozostałych plików, aby uniknąć współdzielenia referencji
+          .map(file => ({ ...file }));
+        
+        // Ustalamy nowy bieżący plik, jeśli zamykamy aktualnie aktywny
+        let newCurrentFile = state.currentFile;
+        let newActiveFilePath = state.activeFilePath;
+        
+        if (state.activeFilePath === filePath) {
+          // Jeśli zamykamy aktywny plik, wybieramy ostatni z listy otwartych
+          if (newOpenFiles.length > 0) {
+            const lastFile = newOpenFiles[newOpenFiles.length - 1];
+            // Tworzymy głęboką kopię ostatniego pliku jako nowy bieżący plik
+            newCurrentFile = { ...lastFile };
+            newActiveFilePath = lastFile.path;
+          } else {
+            // Jeśli nie ma innych otwartych plików, ustawiamy na null
+            newCurrentFile = null;
+            newActiveFilePath = null;
+          }
+        } else if (state.currentFile?.path === filePath) {
+          // Jeśli zamykamy bieżący plik, ale nie jest on aktywny
+          // Szukamy aktywnego pliku w liście otwartych
+          const activeFile = newOpenFiles.find(f => f.path === state.activeFilePath);
+          if (activeFile) {
+            newCurrentFile = { ...activeFile };
+          } else {
+            newCurrentFile = null;
+          }
+        }
 
         return {
           openFiles: newOpenFiles,
@@ -381,8 +428,10 @@ export const useFileStore = create<FileState>((set, get) => {
       set((state) => {
         const file = state.openFiles.find(f => f.path === filePath);
         if (file) {
+          // Tworzymy głęboką kopię pliku, aby uniknąć współdzielenia referencji
+          const fileDeepCopy = { ...file };
           return {
-            currentFile: file,
+            currentFile: fileDeepCopy,
             activeFilePath: filePath
           };
         }
@@ -418,15 +467,114 @@ export const useFileStore = create<FileState>((set, get) => {
           window.alert("Directory paste operations are not fully implemented yet.");
           return;
         } else {
+          // Kopiowanie pliku
           await nativeFs.copyFile(clipboard.path, destinationPath);
           
+          // Jeśli to operacja wycinania, usuń plik źródłowy i wyczyść schowek
           if (clipboard.type === 'cut') {
             await nativeFs.deletePath(clipboard.path, false);
             set({ clipboard: { type: null, path: null } });
           }
+          
+          // Po skopiowaniu, jeśli plik jest otwarty, upewnij się, że ma nowy identyfikator
+          // dzięki temu skopiowany plik będzie traktowany jako całkowicie nowy obiekt
+          const { openFiles } = get();
+          const sourceFileIdx = openFiles.findIndex(f => f.path === clipboard.path);
+          
+          if (sourceFileIdx !== -1 && clipboard.type === 'copy') {
+            // Źródłowy plik jest otwarty i wykonujemy kopiowanie (nie wycinanie)
+            // Jeśli później zostanie otwarty skopiowany plik, będzie miał nowy identyfikator
+            // przypisany przez funkcję openFileFromPath dzięki wcześniejszym modyfikacjom
+            console.log('Source file is opened, ensuring destination file will get a new ID when opened');
+          }
         }
 
-        await get().refreshDirectoryStructure();
+        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość docelowego katalogu
+        try {
+          // Uzyskaj zawartość docelowego katalogu
+          const parentDir = await dirname(destinationPath);
+          const parentContents = await fileService.loadDirectoryContents(parentDir);
+          
+          if (parentContents) {
+            // Aktualizujemy tylko zawartość docelowego katalogu
+            set((state) => {
+              const updateDirectoryStructure = (
+                items: DirectoryItem[] | undefined
+              ): DirectoryItem[] | undefined => {
+                if (!items) return undefined;
+
+                return items.map((currentItem) => {
+                  if (currentItem.path === parentDir) {
+                    return {
+                      ...currentItem,
+                      children: parentContents,
+                      needsLoading: false
+                    };
+                  }
+
+                  if (currentItem.children) {
+                    return {
+                      ...currentItem,
+                      children: updateDirectoryStructure(currentItem.children)
+                    };
+                  }
+
+                  return currentItem;
+                });
+              };
+
+              return {
+                directoryStructure: updateDirectoryStructure(state.directoryStructure)
+              };
+            });
+            
+            // Jeśli to była operacja wycinania, musimy również zaktualizować katalog źródłowy
+            if (clipboard.type === 'cut') {
+              const sourceDir = await dirname(clipboard.path);
+              // Aktualizujemy tylko jeśli katalog źródłowy jest różny od docelowego
+              if (sourceDir !== parentDir) {
+                const sourceContents = await fileService.loadDirectoryContents(sourceDir);
+                
+                if (sourceContents) {
+                  set((state) => {
+                    const updateDirectoryStructure = (
+                      items: DirectoryItem[] | undefined
+                    ): DirectoryItem[] | undefined => {
+                      if (!items) return undefined;
+
+                      return items.map((currentItem) => {
+                        if (currentItem.path === sourceDir) {
+                          return {
+                            ...currentItem,
+                            children: sourceContents,
+                            needsLoading: false
+                          };
+                        }
+
+                        if (currentItem.children) {
+                          return {
+                            ...currentItem,
+                            children: updateDirectoryStructure(currentItem.children)
+                          };
+                        }
+
+                        return currentItem;
+                      });
+                    };
+
+                    return {
+                      directoryStructure: updateDirectoryStructure(state.directoryStructure)
+                    };
+                  });
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error updating directory contents after paste:', error);
+          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
+          await get().refreshDirectoryStructure();
+        }
       } catch (error) {
         console.error('Error during paste operation:', error);
         window.alert(`Error during paste operation: ${error}`);
@@ -482,18 +630,83 @@ export const useFileStore = create<FileState>((set, get) => {
         
         await nativeFs.renamePath(path, newPath);
         
-        await get().refreshDirectoryStructure();
+        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość nadrzędnego katalogu
+        try {
+          const parentContents = await fileService.loadDirectoryContents(dir);
+          
+          if (parentContents) {
+            set((state) => {
+              const updateDirectoryStructure = (
+                items: DirectoryItem[] | undefined
+              ): DirectoryItem[] | undefined => {
+                if (!items) return undefined;
+
+                return items.map((currentItem) => {
+                  if (currentItem.path === dir) {
+                    return {
+                      ...currentItem,
+                      children: parentContents,
+                      needsLoading: false
+                    };
+                  }
+
+                  if (currentItem.children) {
+                    return {
+                      ...currentItem,
+                      children: updateDirectoryStructure(currentItem.children)
+                    };
+                  }
+
+                  return currentItem;
+                });
+              };
+
+              return {
+                directoryStructure: updateDirectoryStructure(state.directoryStructure)
+              };
+            });
+          }
+        } catch (error) {
+          console.error('Error updating directory contents after rename:', error);
+          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
+          await get().refreshDirectoryStructure();
+        }
         
         const { openFiles, currentFile } = get();
         if (!isDirectory && openFiles.some(f => f.path === path)) {
-          set({
-            openFiles: openFiles.map(f => 
-              f.path === path ? { ...f, path: newPath, name: newName } : f
-            ),
-            currentFile: currentFile?.path === path 
-              ? { ...currentFile, path: newPath, name: newName }
-              : currentFile,
-            activeFilePath: get().activeFilePath === path ? newPath : get().activeFilePath
+          set((state) => {
+            // Tworzymy nowe głębokie kopie obiektów, aby uniknąć współdzielonych referencji
+            const newOpenFiles = state.openFiles.map(f => {
+              if (f.path === path) {
+                // Dla zmienianego pliku tworzymy nowy obiekt z nową ścieżką i nazwą
+                return {
+                  id: f.id, // Zachowujemy to samo id, bo to ten sam plik
+                  path: newPath,
+                  name: newName,
+                  content: f.content,
+                  isUnsaved: f.isUnsaved
+                };
+              }
+              // Dla innych plików tworzymy również kopie, aby uniknąć współdzielenia referencji
+              return { ...f };
+            });
+            
+            // Tworzymy głęboką kopię currentFile, jeśli jest zmienianym plikiem
+            const newCurrentFile = currentFile?.path === path 
+              ? {
+                  id: currentFile.id,
+                  path: newPath,
+                  name: newName,
+                  content: currentFile.content,
+                  isUnsaved: currentFile.isUnsaved
+                }
+              : currentFile;
+            
+            return {
+              openFiles: newOpenFiles,
+              currentFile: newCurrentFile,
+              activeFilePath: state.activeFilePath === path ? newPath : state.activeFilePath
+            };
           });
         }
         
@@ -525,6 +738,8 @@ export const useFileStore = create<FileState>((set, get) => {
           return;
         }
         
+        // Pobieramy ścieżkę do katalogu nadrzędnego przed usunięciem
+        const parentDir = await dirname(path);
         
         await nativeFs.deletePath(path, true);
         
@@ -532,7 +747,47 @@ export const useFileStore = create<FileState>((set, get) => {
           get().closeFile(path);
         }
         
-        await get().refreshDirectoryStructure();
+        // Zamiast pełnego odświeżania, aktualizujemy tylko zawartość nadrzędnego katalogu
+        try {
+          const parentContents = await fileService.loadDirectoryContents(parentDir);
+          
+          if (parentContents) {
+            set((state) => {
+              const updateDirectoryStructure = (
+                items: DirectoryItem[] | undefined
+              ): DirectoryItem[] | undefined => {
+                if (!items) return undefined;
+
+                return items.map((currentItem) => {
+                  if (currentItem.path === parentDir) {
+                    return {
+                      ...currentItem,
+                      children: parentContents,
+                      needsLoading: false
+                    };
+                  }
+
+                  if (currentItem.children) {
+                    return {
+                      ...currentItem,
+                      children: updateDirectoryStructure(currentItem.children)
+                    };
+                  }
+
+                  return currentItem;
+                });
+              };
+
+              return {
+                directoryStructure: updateDirectoryStructure(state.directoryStructure)
+              };
+            });
+          }
+        } catch (error) {
+          console.error('Error updating directory contents after delete:', error);
+          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
+          await get().refreshDirectoryStructure();
+        }
       } catch (error) {
         console.error('Error deleting item:', error);
         window.alert(`Error deleting: ${error}`);

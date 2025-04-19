@@ -17,6 +17,7 @@ export interface DirEntry {
  * File information structure
  */
 export interface FileInfo {
+  id: string;
   path: string;
   name: string;
   content: string;

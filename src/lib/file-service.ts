@@ -4,6 +4,7 @@ import { join } from '@tauri-apps/api/path';
 import * as nativeFs from './native-fs';
 
 export interface FileInfo {
+  id: string;
   path: string;
   name: string;
   content: string;
@@ -67,7 +68,9 @@ export class FileService {
       // Use native Rust function to get file info
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
+        // Tworzymy kopię głęboką, aby zapobiec współdzielonym referencjom
         this.currentFile = {
+          id: fileInfo.id,
           path: fileInfo.path,
           name: fileInfo.name,
           content: fileInfo.content,
@@ -78,10 +81,18 @@ export class FileService {
         console.error('Error using native file info, falling back to JS implementation:', error);
         const content = await readTextFile(filePath);
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+        
+        // Generujemy unikalny identyfikator dla implementacji JS
+        const timestamp = Date.now();
+        const randomPart = Math.random().toString(36).substring(2, 12);
+        const id = `${filePath}-${timestamp}-${randomPart}`;
+        
         this.currentFile = {
+          id,
           path: filePath,
           name: fileName,
-          content
+          content,
+          isUnsaved: false
         };
         return this.currentFile;
       }
@@ -264,7 +275,9 @@ export class FileService {
       // Use native Rust function to get file info
       try {
         const fileInfo = await nativeFs.getFileInfo(filePath);
+        // Tworzymy kopię głęboką, aby zapobiec współdzielonym referencjom
         this.currentFile = {
+          id: fileInfo.id,
           path: fileInfo.path,
           name: fileInfo.name,
           content: fileInfo.content,
@@ -275,10 +288,18 @@ export class FileService {
         console.error('Error using native file info, falling back to JS implementation:', error);
         const content = await readTextFile(filePath);
         const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+        
+        // Generujemy unikalny identyfikator dla implementacji JS
+        const timestamp = Date.now();
+        const randomPart = Math.random().toString(36).substring(2, 12);
+        const id = `${filePath}-${timestamp}-${randomPart}`;
+        
         this.currentFile = {
+          id,
           path: filePath,
           name: fileName,
-          content
+          content,
+          isUnsaved: false
         };
         return this.currentFile;
       }
@@ -289,49 +310,71 @@ export class FileService {
   }
 
   /**
-   * Saves a file with the given content
+   * Saves current file
    * @param content - Content to save
-   * @param saveAs - Whether to show save dialog even if file exists
-   * @returns File information or null if failed
+   * @param saveAs - Whether to show a file dialog
+   * @returns FileInfo or null if cancelled
    */
   async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | null> {
     try {
       let filePath: string | null = null;
-
+      
       if (saveAs || !this.currentFile) {
+        // Open save dialog
         const selected = await save({
           filters: [
             { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
             { name: 'All Files', extensions: ['*'] }
           ]
         });
-
+        
         if (!selected) {
           return null;
         }
-
+        
         filePath = selected as string;
       } else {
         filePath = this.currentFile.path;
       }
-
-      // Use native Rust function to write file
+      
+      // Save file content
+      await nativeFs.writeToFile(filePath, content);
+      
+      // Get updated file info with new content
       try {
-        await nativeFs.writeToFile(filePath, content);
+        const fileInfo = await nativeFs.getFileInfo(filePath);
+        
+        // Tworzymy kopię głęboką, aby zapobiec współdzielonym referencjom
+        const updatedFile: FileInfo = {
+          id: saveAs ? fileInfo.id : (this.currentFile?.id || fileInfo.id), // Zachowaj id jeśli to ten sam plik
+          path: fileInfo.path,
+          name: fileInfo.name,
+          content: fileInfo.content,
+          isUnsaved: false
+        };
+        
+        this.currentFile = updatedFile;
+        return updatedFile;
       } catch (error) {
-        console.error('Error using native file writing, falling back to JS implementation:', error);
-        await writeTextFile(filePath, content);
+        console.error('Error getting file info after save, falling back to JS implementation:', error);
+        const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
+        
+        // Zachowaj to samo id jeśli zapisujemy ten sam plik, a wygeneruj nowe jeśli to "Zapisz jako"
+        const id = saveAs 
+          ? `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`
+          : (this.currentFile?.id || `${filePath}-${Date.now()}-${Math.random().toString(36).substring(2, 12)}`);
+        
+        const updatedFile: FileInfo = {
+          id,
+          path: filePath,
+          name: fileName,
+          content,
+          isUnsaved: false
+        };
+        
+        this.currentFile = updatedFile;
+        return updatedFile;
       }
-
-      const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || 'unknown';
-      this.currentFile = {
-        path: filePath,
-        name: fileName,
-        content,
-        isUnsaved: false
-      };
-
-      return this.currentFile;
     } catch (error) {
       console.error('Error saving file:', error);
       throw error;

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, memo, useState } from "react"
+import { useRef, useEffect, useCallback, memo, useState, useMemo } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider"
 import {
@@ -33,6 +33,62 @@ interface TerminalInstance {
   processName: string;
 }
 
+// Wydzielamy oddzielny komponent dla edytora kodu, który będzie memoizowany na najwyższym poziomie
+const EditorContainer = memo(({ file, language, onChangeContent, onSave }: {
+    file: FileInfo;
+    language: string;
+    onChangeContent: (content: string) => void;
+    onSave: () => void;
+}) => {
+    console.log('EditorContainer render', { 
+        fileId: file.id,
+        filePath: file.path, 
+        language
+    });
+    
+    // Tworzenie funkcji handleChange i handleSave jest tutaj bezpieczne,
+    // ponieważ cały komponent jest memoizowany
+    const handleChange = (content: string) => {
+        console.log('handleChange in EditorContainer', { 
+            contentLength: content.length, 
+            contentPreview: content.substring(0, 20) + '...'
+        });
+        onChangeContent(content);
+    };
+    
+    const handleSave = () => {
+        console.log('handleSave in EditorContainer');
+        onSave();
+    };
+    
+    return (
+        <CodeEditor 
+            initialValue={file.content}
+            onChange={handleChange}
+            language={language}
+            onSave={handleSave}
+        />
+    );
+}, (prevProps, nextProps) => {
+    // Komponent zostanie przerenderowany tylko jeśli zmieni się ID pliku,
+    // ścieżka pliku, język lub zawartość
+    const isEqual = prevProps.file.id === nextProps.file.id &&
+                   prevProps.file.path === nextProps.file.path &&
+                   prevProps.language === nextProps.language;
+    
+    console.log('EditorContainer memo check', { 
+        isEqual,
+        prevId: prevProps.file.id,
+        nextId: nextProps.file.id,
+        prevPath: prevProps.file.path,
+        nextPath: nextProps.file.path,
+        prevLanguage: prevProps.language,
+        nextLanguage: nextProps.language
+    });
+    
+    return isEqual;
+});
+
 function MainContent() {
     const { 
         currentFile, 
@@ -50,13 +106,35 @@ function MainContent() {
     const [terminalInstances, setTerminalInstances] = useState<TerminalInstance[]>([]);
     const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
     
+    const handleContentChange = useCallback((content: string) => {
+        console.log('handleContentChange in App', { 
+            contentLength: content.length, 
+            contentPreview: content.substring(0, 20) + '...',
+            currentFileId: currentFile?.id,
+            currentFilePath: currentFile?.path
+        });
+        updateFileContent(content);
+    }, [updateFileContent]);
+
+    const handleSaveFile = useCallback(() => {
+        if (currentFile) {
+            console.log('Saving file:', {
+                path: currentFile.path,
+                id: currentFile.id,
+                contentLength: currentFile.content.length,
+                contentPreview: currentFile.content.substring(0, 20) + '...'
+            });
+            saveFile(currentFile.content);
+        }
+    }, [saveFile, currentFile?.id, currentFile?.path]);
+    
     useEffect(() => {
         if (prevFilePathRef.current !== activeFilePath) {
             prevFilePathRef.current = activeFilePath;
         }
     }, [activeFilePath]);
     
-    const getLanguageFromExtension = (fileName: string) => {
+    const getLanguageFromExtension = useCallback((fileName: string) => {
         if (!fileName || !fileName.includes('.')) return 'typescript';
         
         const ext = fileName.split('.').pop()?.toLowerCase();
@@ -101,99 +179,64 @@ function MainContent() {
             
             default: return 'typescript';
         }
-    };
+    }, []);
 
-    const fileLanguage = currentFile 
-        ? getLanguageFromExtension(currentFile.name) 
-        : 'typescript';
-    
-    const handleContentChange = useCallback((content: string) => {
-        console.log('handleContentChange in App', { contentLength: content.length });
-        updateFileContent(content);
-    }, [updateFileContent]);
+    const fileLanguage = useMemo(() => 
+        currentFile ? getLanguageFromExtension(currentFile.name) : 'typescript',
+    [currentFile?.name, getLanguageFromExtension]);
 
-    interface MemoizedCodeEditorProps {
-        file: FileInfo;
-        onChangeContent: (content: string) => void;
-        language: string;
-        onSave: () => void;
-    }
-
-    const MemoizedCodeEditor = memo<MemoizedCodeEditorProps>(
-        ({ file, onChangeContent, language, onSave }) => {
-            console.log('MemoizedCodeEditor render', { 
-                filePath: file.path, 
-                language,
-                contentLength: file.content.length,
-                isUnsaved: file.isUnsaved
-            });
-            
-            const fileContentRef = useRef(file.content);
-            const isUnsavedRef = useRef(file.isUnsaved);
-            
-            useEffect(() => {
-                fileContentRef.current = file.content;
-            }, [file.path]);
-            
-            const handleChange = useCallback((content: string) => {
-                console.log('handleChange in MemoizedCodeEditor', { contentLength: content.length });
-                fileContentRef.current = content;
-                isUnsavedRef.current = true; 
-                onChangeContent(content);
-            }, [onChangeContent]);
-            
-            const handleSave = useCallback(() => {
-                console.log('handleSave in MemoizedCodeEditor');
-                isUnsavedRef.current = false; 
-                onSave();
-            }, [onSave]);
-            
+    // Kontener dla edytora który będzie stabilnym elementem drzewa DOM
+    const EditorContentArea = useMemo(() => {
+        console.log('Rendering EditorContentArea', {
+            hasCurrentFile: Boolean(currentFile),
+            filePath: currentFile?.path,
+            fileId: currentFile?.id,
+            language: fileLanguage
+        });
+        
+        if (!currentFile) {
             return (
-                <CodeEditor 
-                    initialValue={fileContentRef.current}
-                    onChange={handleChange}
-                    language={language}
-                    onSave={handleSave}
-                />
+                <div className="flex h-full items-center justify-center">
+                    <p className="text-sm text-muted-foreground">
+                        No file selected
+                    </p>
+                </div>
             );
-        },
-        (prevProps, nextProps) => {
-            const prevInfo = {
-                path: prevProps.file.path,
-                language: prevProps.language,
-                contentLength: prevProps.file.content.length,
-                isUnsaved: prevProps.file.isUnsaved
-            };
-            
-            const nextInfo = {
-                path: nextProps.file.path,
-                language: nextProps.language,
-                contentLength: nextProps.file.content.length,
-                isUnsaved: nextProps.file.isUnsaved
-            };
-            
-            const shouldNotUpdate = (
-                prevInfo.path === nextInfo.path && 
-                prevInfo.language === nextInfo.language
+        }
+        
+        if (isImageFile(currentFile.path)) {
+            return <ImageViewer src={convertFileSrc(currentFile.path)} />;
+        }
+        
+        if (isAudioFile(currentFile.path)) {
+            return (
+                <div className="h-full">
+                    <AudioPlayer 
+                        key={currentFile.path}
+                        src={convertFileSrc(currentFile.path)} 
+                        fileName={currentFile.name}
+                    />
+                </div>
             );
-            
-            console.log('MemoizedCodeEditor memo check', { 
-                shouldNotUpdate, 
-                prevInfo, 
-                nextInfo 
-            });
-            
-            return shouldNotUpdate;
         }
-    );
-
-    // Create a save handler function
-    const handleSaveFile = useCallback(() => {
-        if (currentFile) {
-            console.log('Saving file:', currentFile.path);
-            saveFile(currentFile.content);
-        }
-    }, [currentFile, saveFile]);
+        
+        // Zabezpieczenie przed niezdefiniowanym plikiem
+        return (
+            <EditorContainer
+                file={currentFile}
+                language={fileLanguage}
+                onChangeContent={handleContentChange}
+                onSave={handleSaveFile}
+            />
+        );
+    }, [
+        currentFile?.id, // Główna zależność - zmiana tylko gdy zmienia się plik
+        fileLanguage,
+        handleContentChange,
+        handleSaveFile,
+        isImageFile,
+        isAudioFile
+    ]);
 
     return (
         <ThemeProvider forceDarkMode={true}>
@@ -232,33 +275,7 @@ function MainContent() {
                 <div className="flex flex-1 flex-col rounded-b-xl">
                     <ResizablePanelGroup direction="vertical">
                         <ResizablePanel defaultSize={isTerminalVisible ? 60 : 100}>
-                            {currentFile ? (
-                                isImageFile(currentFile.path) ? (
-                                    <ImageViewer src={convertFileSrc(currentFile.path)} />
-                                ) : isAudioFile(currentFile.path) ? (
-                                    <div className="h-full">
-                                        <AudioPlayer 
-                                            key={currentFile.path}
-                                            src={convertFileSrc(currentFile.path)} 
-                                            fileName={currentFile.name}
-                                        />
-                                    </div>
-                                ) : (
-                                    <MemoizedCodeEditor
-                                        key={activeFilePath}
-                                        file={currentFile}
-                                        onChangeContent={handleContentChange}
-                                        language={fileLanguage}
-                                        onSave={handleSaveFile}
-                                    />
-                                )
-                            ) : (
-                                <div className="flex h-full items-center justify-center">
-                                    <p className="text-sm text-muted-foreground">
-                                        No file selected
-                                    </p>
-                                </div>
-                            )}
+                            {EditorContentArea}
                         </ResizablePanel>
                         {isTerminalVisible && (
                             <>

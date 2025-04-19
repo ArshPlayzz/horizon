@@ -8,6 +8,7 @@ use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkMatch, SinkContext, Bin
 use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 use globset::{Glob, GlobSetBuilder, GlobSet};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Create a new directory at the specified path
 /// 
@@ -247,7 +248,16 @@ pub fn get_file_info(path: String) -> Result<FileInfo, String> {
         .unwrap_or("unknown")
         .to_string();
     
+    // Generujemy unikalny identyfikator z ścieżki i timestampa
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    
+    let id = format!("{}-{}", path, timestamp);
+    
     Ok(FileInfo {
+        id,
         path,
         name,
         content,
@@ -258,6 +268,7 @@ pub fn get_file_info(path: String) -> Result<FileInfo, String> {
 /// File information structure
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct FileInfo {
+    id: String,
     path: String,
     name: String,
     content: String,

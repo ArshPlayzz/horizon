@@ -8,7 +8,6 @@ use sysinfo::Pid;
 use std::fs;
 use serde_json::{self, json};
 use regex::Regex;
-#[cfg(unix)]
 
 /// State management for terminal sessions
 #[derive(Default)]

@@ -363,67 +363,19 @@ export class FileService {
   }
 
   /**
-   * Background file indexing for faster search
+   * Konwertuje DirectoryItem z nativeFs do formatu używanego w aplikacji
+   * @param items - Tablica elementów do przekonwertowania
+   * @returns Przekonwertowana tablica DirectoryItem
    */
-  private async indexDirectoryContents() {
-    if (this.indexingInProgress || !this.directoryStructure || !this.currentDirectory) {
-      return;
-    }
-    
-    this.indexingInProgress = true;
-    
-    const indexableExtensions = [
-      'js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json', 'md', 'txt', 
-      'py', 'rb', 'php', 'java', 'go', 'rs', 'c', 'cpp', 'cs', 'swift'
-    ];
-    
-    const filesToIndex: string[] = [];
-    const collectFiles = (items: DirectoryItem[]) => {
-      for (const item of items) {
-        if (!item.isDirectory) {
-          const fileExt = item.name.split('.').pop()?.toLowerCase();
-          if (fileExt && indexableExtensions.includes(fileExt)) {
-            filesToIndex.push(item.path);
-          }
-        } else if (item.children) {
-          collectFiles(item.children);
-        }
-      }
-    };
-    
-    collectFiles(this.directoryStructure);
-    
-    const batchSize = 10;
-    for (let i = 0; i < filesToIndex.length; i += batchSize) {
-      const batch = filesToIndex.slice(i, i + batchSize);
-      
-      await Promise.all(batch.map(async (filePath) => {
-        try {
-          if (this.fileContentIndex.has(filePath)) {
-            return;
-          }
-          
-          const content = await readTextFile(filePath);
-          this.fileContentIndex.set(filePath, content);
-          
-          const words = content.toLowerCase().split(/\s+/);
-          const uniqueWords = new Set(words);
-          
-          for (const word of uniqueWords) {
-            if (word.length > 2) {
-              const existingFiles = this.fileSearchIndex.get(word) || new Set();
-              existingFiles.add(filePath);
-              this.fileSearchIndex.set(word, existingFiles);
-            }
-          }
-        } catch (error) {
-        }
-      }));
-      
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    
-    this.indexingInProgress = false;
+  private mapNativeFsItems(items: nativeFs.DirectoryItem[]): DirectoryItem[] {
+    return items.map(item => ({
+      name: item.name,
+      path: item.path,
+      isDirectory: item.is_directory,
+      type: item.is_directory ? 'directory' : 'file',
+      children: item.children ? this.mapNativeFsItems(item.children) : undefined,
+      needsLoading: item.needs_loading
+    }));
   }
 
   /**
@@ -437,17 +389,48 @@ export class FileService {
       return [];
     }
     
-    // Use Rust implementation for search
     try {
-      const rustItems = await nativeFs.searchFileContents(query, this.currentDirectory, maxResults);
-      return this.convertRustDirectoryItems(rustItems);
+      // Use the new, more efficient Rust implementation for search
+      const results = await nativeFs.searchFileContents(query, this.currentDirectory, maxResults);
+      return this.mapNativeFsItems(results);
     } catch (error) {
-      console.error('Error with Rust file content search, falling back to JS implementation:', error);
-      
-      // Fallback implementation would go here
-      // For brevity, we'll return an empty array as implementing a complete search
-      // in JavaScript would be lengthy
-      console.warn('JavaScript fallback for file content search not implemented');
+      console.error('Error searching file contents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Searches file contents with advanced options
+   * @param query - Search query
+   * @param maxResults - Maximum number of results
+   * @param ignoreCase - Whether to ignore case
+   * @param includePatterns - Optional glob patterns to include
+   * @param excludePatterns - Optional glob patterns to exclude
+   * @returns Array of match results with context
+   */
+  async searchFileContentsAdvanced(
+    query: string, 
+    maxResults: number = 20,
+    ignoreCase: boolean = true,
+    includePatterns?: string[],
+    excludePatterns?: string[]
+  ): Promise<nativeFs.MatchResult[]> {
+    if (!query || !this.currentDirectory) {
+      return [];
+    }
+    
+    try {
+      // Use the advanced Rust implementation
+      return await nativeFs.searchFileContentsAdvanced(
+        query, 
+        this.currentDirectory, 
+        maxResults,
+        ignoreCase,
+        includePatterns,
+        excludePatterns
+      );
+    } catch (error) {
+      console.error('Error with advanced file content search:', error);
       return [];
     }
   }
@@ -535,39 +518,56 @@ export class FileService {
       return [];
     }
     
-    // Use Rust implementation for search
     try {
-      const rustItems = await nativeFs.searchFilesByName(query, this.currentDirectory, maxResults);
-      return this.convertRustDirectoryItems(rustItems);
+      // Use the new, more efficient Rust implementation for search
+      const results = await nativeFs.searchFilesByName(query, this.currentDirectory, maxResults);
+      return this.mapNativeFsItems(results);
     } catch (error) {
-      console.error('Error with Rust file name search, falling back to JS implementation:', error);
-      
-      if (!this.directoryStructure) {
-        return [];
-      }
-      
-      // Fallback implementation - simple name matching
-      const results: DirectoryItem[] = [];
-      const queryLower = query.toLowerCase();
-      
-      const searchInItems = (items: DirectoryItem[]) => {
-        for (const item of items) {
-          if (results.length >= maxResults) {
-            break;
-          }
-          
-          if (item.name.toLowerCase().includes(queryLower)) {
-            results.push(item);
-          }
-          
-          if (item.isDirectory && item.children) {
-            searchInItems(item.children);
-          }
-        }
-      };
-      
-      searchInItems(this.directoryStructure);
-      return results;
+      console.error('Error searching files by name:', error);
+      return [];
     }
+  }
+
+  /**
+   * Searches for files by name with advanced options
+   * @param query - Search query
+   * @param maxResults - Maximum number of results
+   * @param includePatterns - Optional glob patterns to include
+   * @param excludePatterns - Optional glob patterns to exclude
+   * @returns Array of items matching the query in name
+   */
+  async searchFilesAdvanced(
+    query: string, 
+    maxResults: number = 20,
+    includePatterns?: string[],
+    excludePatterns?: string[]
+  ): Promise<DirectoryItem[]> {
+    if (!query || !this.currentDirectory) {
+      return [];
+    }
+    
+    try {
+      // Use the advanced Rust implementation
+      const results = await nativeFs.searchFilesByNameAdvanced(
+        query, 
+        this.currentDirectory,
+        maxResults,
+        includePatterns,
+        excludePatterns
+      );
+      return this.mapNativeFsItems(results);
+    } catch (error) {
+      console.error('Error with advanced file name search:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Stops file indexing in memory as it's now handled by the backend
+   */
+  private async indexDirectoryContents() {
+    // This method is kept for compatibility but is essentially a no-op now
+    // since indexing and searching is now handled by the backend
+    console.log('File indexing is now handled by the backend');
   }
 }

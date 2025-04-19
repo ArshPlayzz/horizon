@@ -48,7 +48,9 @@ pub fn run() {
             fs::is_image_file,
             fs::is_audio_file,
             fs::search_file_contents,
-            fs::search_files_by_name
+            fs::search_files_by_name,
+            fs::search_file_contents_advanced,
+            fs::search_files_by_name_advanced
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

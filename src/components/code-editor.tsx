@@ -218,7 +218,7 @@ function getEditorExtensions({
     }),
     EditorView.editable.of(!readOnly),
     EditorView.domEventHandlers({
-      focus: (event, view) => {
+      focus: () => {
         return false;
       },
       blur: () => {

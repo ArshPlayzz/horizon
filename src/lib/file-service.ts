@@ -1,5 +1,5 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile, readDir} from '@tauri-apps/plugin-fs';
+import { readTextFile, readDir} from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import * as nativeFs from './native-fs';
 
@@ -351,14 +351,12 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
       filePath = this.currentFile.path;
     }
     
-    // Upewnij się, że content jest stringiem
     const cleanContent = String(content);
     
     await nativeFs.writeToFile(filePath, cleanContent);
     
-    let savedContent = "";
     try {
-      savedContent = await nativeFs.readFile(filePath);
+      await nativeFs.readFile(filePath);
     } catch (error) {
       console.error('[FileService] Error verifying saved content:', error);
     }

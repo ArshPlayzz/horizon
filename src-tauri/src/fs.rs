@@ -3,14 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Write;
 use tauri::command;
-use grep_matcher::Matcher;
 use grep_regex::RegexMatcher;
 use grep_searcher::{Searcher, SearcherBuilder, Sink, SinkMatch, SinkContext, BinaryDetection};
 use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
 use globset::{Glob, GlobSetBuilder, GlobSet};
-use std::time::Duration;
-use std::collections::HashSet;
 
 /// Create a new directory at the specified path
 /// 

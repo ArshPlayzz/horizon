@@ -7,7 +7,6 @@ use crate::process_tracker::{ProcessTracker, find_child_process};
 use sysinfo::Pid;
 use std::fs;
 use serde_json::{self, json};
-#[cfg(unix)]
 
 /// State management for terminal sessions
 #[derive(Default)]

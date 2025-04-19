@@ -120,7 +120,6 @@ export const useFileStore = create<FileState>((set, get) => {
     const { openFiles } = get();
     const existingFileIndex = openFiles.findIndex(f => f.path === file.path);
     
-    // Tworzymy głęboką kopię obiektu file, aby uniknąć współdzielonych referencji
     const fileDeepCopy: FileInfo = {
       id: file.id,
       path: file.path,
@@ -215,56 +214,60 @@ export const useFileStore = create<FileState>((set, get) => {
       }
     },
 
-    saveFile: async (content) => {
-      try {
-        
-        const { currentFile, openFiles } = get();
-        if (!currentFile) {
-          return null;
-        }
-        
-        if (currentFile.content !== content) {
-          currentFile.content = content;
-          
-          const fileIndex = openFiles.findIndex(f => f.path === currentFile.path);
-          if (fileIndex !== -1) {
-            openFiles[fileIndex].content = content;
-          }
-        }
-        
-        if (content.length === 0 && currentFile.content.length > 0) {
-          console.warn('Warning: About to save empty content but currentFile has content. Using currentFile content instead.');
-          content = currentFile.content;
-        }
-        
-        const file = await fileService.saveFile(content, false);
-        if (file) {
-          
-          currentFile.isUnsaved = false;
-          
-          const needsStateUpdate = openFiles.some(f => 
-            f.path === file.path && f.isUnsaved === true
-          );
-          
-          if (needsStateUpdate) {
-            set((state) => {
-              return {
-                openFiles: state.openFiles.map(f =>
-                  f.path === file.path ? { ...f, isUnsaved: false } : f
-                )
-              };
-            });
-          } else {
-            console.log('No state update needed, file already marked as saved');
-          }
-        }
-        
-        return file;
-      } catch (error) {
-        console.error('Error in saveFile:', error);
-        return null;
+
+saveFile: async (content) => {
+  try {
+    const { currentFile } = get();
+    if (!currentFile) {
+      return null;
+    }
+    
+    if (content.trim().length === 0) {
+      console.warn('Warning: Attempting to save empty content');
+      
+      const editorContainer = document.querySelector('[data-editor-container]') as any;
+      if (editorContainer && editorContainer.__currentContent) {
+        content = editorContainer.__currentContent;
+      } 
+      else if (currentFile.content && currentFile.content.length > 0) {
+        content = currentFile.content;
       }
-    },
+      else if (editorContainer) {
+        const editorContent = editorContainer.querySelector('.cm-content')?.textContent;
+        if (editorContent && editorContent.length > 0) {
+          content = editorContent;
+        }
+      }
+    }
+    
+    const file = await fileService.saveFile(content, false);
+    
+    if (file) {
+      set((state) => {
+        const updatedOpenFiles = state.openFiles.map(f =>
+          f.path === file.path ? {
+            ...f,
+            content: content,
+            isUnsaved: false
+          } : f
+        );
+        
+        return {
+          openFiles: updatedOpenFiles,
+          currentFile: {
+            ...file,
+            content: content
+          }
+        };
+      });
+    }
+    
+    return file;
+  } catch (error) {
+    console.error('Error in saveFile:', error);
+    return null;
+  }
+},
 
     saveFileAs: async (content) => {
       try {
@@ -278,44 +281,43 @@ export const useFileStore = create<FileState>((set, get) => {
       }
     },
 
-    updateFileContent: (content) => {
-      const { currentFile, openFiles } = get();
-      if (!currentFile) return;
 
-      const updatedFile: FileInfo = {
-        id: currentFile.id,
-        path: currentFile.path,
-        name: currentFile.name,
-        content: content,
-        isUnsaved: true
-      };
+updateFileContent: (content) => {
+  const { currentFile } = get();
+  if (!currentFile) return;
 
-      const existingFile = openFiles.find(file => file.path === currentFile.path);
-      const needsUpdate = !existingFile || !existingFile.isUnsaved || existingFile.content !== content;
+  const updatedFile: FileInfo = {
+    id: currentFile.id,
+    path: currentFile.path,
+    name: currentFile.name,
+    content: content,
+    isUnsaved: true
+  };
+
+  set((state) => {
+    const fileIndex = state.openFiles.findIndex(f => f.path === currentFile.path);
+    
+    if (fileIndex !== -1) {
+      const newOpenFiles = [...state.openFiles];
+      newOpenFiles[fileIndex] = updatedFile;
       
-      if (needsUpdate) {
-        set((state) => {
-          const fileInState = state.openFiles.find(f => f.path === currentFile.path);
-          
-          if (!fileInState || !fileInState.isUnsaved || fileInState.content !== content) {
-            const newOpenFiles = state.openFiles.map(file =>
-              file.path === currentFile.path
-                ? { ...updatedFile }
-                : { ...file }
-            );
-            
-            return {
-              openFiles: newOpenFiles,
-              currentFile: updatedFile
-            };
-          }
-          
-          return state;
-        });
-      } else {
-        set({ currentFile: updatedFile });
-      }
-    },
+      return {
+        openFiles: newOpenFiles,
+        currentFile: updatedFile
+      };
+    } else {
+      return {
+        openFiles: [...state.openFiles, updatedFile],
+        currentFile: updatedFile
+      };
+    }
+  });
+  
+  const editorContainer = document.querySelector('[data-editor-container]');
+  if (editorContainer) {
+    (editorContainer as any).__currentContent = content;
+  }
+},
 
     searchFiles: async (query) => {
       return fileService.searchFiles(query);
@@ -748,7 +750,6 @@ export const useFileStore = create<FileState>((set, get) => {
           }
         } catch (error) {
           console.error('Error updating directory contents after delete:', error);
-          // Tylko w przypadku błędu aktualizacji katalogów, spadamy do pełnego odświeżenia
           await get().refreshDirectoryStructure();
         }
       } catch (error) {
@@ -785,7 +786,6 @@ export const useFileStore = create<FileState>((set, get) => {
     },
 
     openCreateDialog: (path, type) => {
-      console.log(`openCreateDialog called with type: ${type} and path: ${path}`);
       set({
         createDialog: {
           isOpen: true,
@@ -797,7 +797,6 @@ export const useFileStore = create<FileState>((set, get) => {
     
     closeCreateDialog: () => {
       const currentType = get().createDialog.type;
-      console.log(`closeCreateDialog called, preserving type: ${currentType}`);
       set({
         createDialog: {
           isOpen: false,
@@ -830,7 +829,6 @@ export const useFileStore = create<FileState>((set, get) => {
           await nativeFs.createFile(filePath, '');
           console.log(`Successfully created file: ${filePath}`);
           
-          // First refresh just the parent directory
           const parentContents = await fileService.loadDirectoryContents(path);
           if (parentContents) {
             set((state) => {
@@ -865,7 +863,6 @@ export const useFileStore = create<FileState>((set, get) => {
             });
           }
           
-          // Also refresh the entire tree structure
           await get().refreshDirectoryStructure();
           
           await get().openFileFromPath(filePath);
@@ -877,11 +874,8 @@ export const useFileStore = create<FileState>((set, get) => {
             throw new Error(`A folder with the name "${name}" already exists.`);
           }
           
-          console.log(`Creating folder at path: ${folderPath}`);
           await nativeFs.createDirectory(folderPath);
-          console.log(`Successfully created folder: ${folderPath}`);
           
-          // First refresh just the parent directory
           const parentContents = await fileService.loadDirectoryContents(path);
           if (parentContents) {
             set((state) => {
@@ -892,17 +886,15 @@ export const useFileStore = create<FileState>((set, get) => {
 
                 return items.map((currentItem) => {
                   if (currentItem.path === path) {
-                    // Find the newly created folder in parent contents and ensure needsLoading is false
                     const updatedContents = parentContents.map(child => {
                       if (child.path === folderPath && child.isDirectory) {
                         return {
                           ...child,
                           needsLoading: false,
-                          children: [] // Initialize with empty array
+                          children: []
                         };
                       }
                       
-                      // Preserve existing expanded children in the parent directory
                       const existingChild = currentItem.children?.find(existingItem => existingItem.path === child.path);
                       if (existingChild && existingChild.children) {
                         return {
@@ -939,8 +931,6 @@ export const useFileStore = create<FileState>((set, get) => {
             });
           }
           
-          // Also refresh the entire tree structure after a short delay
-          // Only refresh the structure once instead of twice to avoid race conditions
           await new Promise(resolve => setTimeout(resolve, 500));
           await get().refreshDirectoryStructure();
         } else {
@@ -969,14 +959,10 @@ export const useFileStore = create<FileState>((set, get) => {
     
     refreshDirectoryStructure: async () => {
       try {
-        console.log("Refreshing directory structure...");
         const structure = await fileService.refreshCurrentDirectory();
         if (structure) {
-          console.log(`Directory structure refreshed with ${structure.length} root items`);
           
-          // Preserve expanded states from the current structure
           set((state) => {
-            // Function to merge new structure with previous, preserving expanded folders
             const mergeStructure = (
               newItems: DirectoryItem[],
               oldItems: DirectoryItem[] | undefined
@@ -984,18 +970,16 @@ export const useFileStore = create<FileState>((set, get) => {
               if (!oldItems) return newItems;
               
               return newItems.map(newItem => {
-                // Find matching item in old structure
                 const oldItem = oldItems.find(item => item.path === newItem.path);
                 
                 if (oldItem && newItem.isDirectory && oldItem.isDirectory) {
-                  // Preserve the children if they exist in the old item and not needsLoading
                   if (oldItem.children && !oldItem.needsLoading) {
                     return {
                       ...newItem,
                       children: oldItem.children.length > 0 ? 
                         mergeStructure(newItem.children || [], oldItem.children) : 
                         newItem.children,
-                      needsLoading: false // If the old item had loaded contents, preserve that
+                      needsLoading: false 
                     };
                   }
                 }

@@ -42,82 +42,99 @@ const EditorContainer = memo(({ file, language, onChangeContent, onSave }: {
     
     const currentContentRef = useRef(file.content);
     
+    // Zaktualizuj referencję, gdy plik się zmieni
+    useEffect(() => {
+        currentContentRef.current = file.content;
+        
+        const editorContainer = document.querySelector('[data-editor-container]');
+        if (editorContainer) {
+            (editorContainer as any).__currentContent = file.content;
+        }
+    }, [file.id, file.path, file.content]);
+    
     const handleChange = (content: string) => {
         currentContentRef.current = content;
+        
+        const editorContainer = document.querySelector('[data-editor-container]');
+        if (editorContainer) {
+            (editorContainer as any).__currentContent = content;
+        }
+        
         onChangeContent(content);
     };
     
     const handleSave = () => {
-        onSave();
+        const content = currentContentRef.current;
         
         const editorContainer = document.querySelector('[data-editor-container]');
         if (editorContainer) {
-            (editorContainer as any).__currentContent = currentContentRef.current;
+            (editorContainer as any).__currentContent = content;
         }
-    };
-    
-    return (
-        <CodeEditor 
-            initialValue={file.content}
-            onChange={handleChange}
-            language={language}
-            onSave={handleSave}
-        />
-    );
-}, (prevProps, nextProps) => {
-    const isEqual = prevProps.file.id === nextProps.file.id &&
-                   prevProps.file.path === nextProps.file.path &&
-                   prevProps.language === nextProps.language;
-    
-    
-    return isEqual;
-});
+        
+            onSave();
+        };
+        
+        return (
+            <CodeEditor 
+                initialValue={file.content}
+                onChange={handleChange}
+                language={language}
+                onSave={handleSave}
+            />
+        );
+    }, (prevProps, nextProps) => {
+        const isEqual = prevProps.file.id === nextProps.file.id &&
+                    prevProps.file.path === nextProps.file.path &&
+                    prevProps.language === nextProps.language;
+        
+        return isEqual;
+    });
 
-function MainContent() {
-    const { 
-        currentFile, 
-        updateFileContent, 
-        activeFilePath,
-        isImageFile,
-        isAudioFile,
-        saveFile
-    } = useFileStore();
-    
-    const { state: sidebarState } = useSidebar();
-    const prevFilePathRef = useRef<string | null>(null);
-    
-    const [isTerminalVisible, setIsTerminalVisible] = useState(false);
-    const [terminalInstances, setTerminalInstances] = useState<TerminalInstance[]>([]);
-    const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
-    
-    const handleContentChange = useCallback((content: string) => {
-        updateFileContent(content);
-    }, [updateFileContent]);
+    function MainContent() {
+        const { 
+            currentFile, 
+            updateFileContent, 
+            activeFilePath,
+            isImageFile,
+            isAudioFile,
+            saveFile
+        } = useFileStore();
+        
+        const { state: sidebarState } = useSidebar();
+        const prevFilePathRef = useRef<string | null>(null);
+        
+        const [isTerminalVisible, setIsTerminalVisible] = useState(false);
+        const [terminalInstances, setTerminalInstances] = useState<TerminalInstance[]>([]);
+        const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+        
+        const handleContentChange = useCallback((content: string) => {
+            updateFileContent(content);
+        }, [updateFileContent]);
 
-    const handleSaveFile = useCallback(() => {
-        if (currentFile) {
-    
-            let contentToSave = currentFile.content;
-            
-            const editorContainer = document.querySelector('[data-editor-container]') as any;
-            if (editorContainer && editorContainer.__currentContent) {
-                contentToSave = editorContainer.__currentContent;
-            }
-            else if (contentToSave.length === 0 && editorContainer) {
-                const editorContent = editorContainer.querySelector('.cm-content')?.textContent;
-                if (editorContent && editorContent.length > 0) {
-                    contentToSave = editorContent;
+        const handleSaveFile = useCallback(() => {
+            if (currentFile) {
+        
+                let contentToSave = currentFile.content;
+                
+                const editorContainer = document.querySelector('[data-editor-container]') as any;
+                if (editorContainer && editorContainer.__currentContent) {
+                    contentToSave = editorContainer.__currentContent;
                 }
+                else if (contentToSave.length === 0 && editorContainer) {
+                    const editorContent = editorContainer.querySelector('.cm-content')?.textContent;
+                    if (editorContent && editorContent.length > 0) {
+                        contentToSave = editorContent;
+                    }
+                }
+                saveFile(contentToSave);
             }
-            saveFile(contentToSave);
-        }
-    }, [saveFile, currentFile?.id, currentFile?.path]);
-    
-    useEffect(() => {
-        if (prevFilePathRef.current !== activeFilePath) {
-            prevFilePathRef.current = activeFilePath;
-        }
-    }, [activeFilePath]);
+        }, [saveFile, currentFile?.id, currentFile?.path]);
+        
+        useEffect(() => {
+            if (prevFilePathRef.current !== activeFilePath) {
+                prevFilePathRef.current = activeFilePath;
+            }
+        }, [activeFilePath]);
     
     const getLanguageFromExtension = useCallback((fileName: string) => {
         if (!fileName || !fileName.includes('.')) return 'typescript';

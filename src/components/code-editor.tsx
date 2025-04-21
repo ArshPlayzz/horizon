@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { EditorState, StateEffect } from "@codemirror/state"
 import { javascript } from "@codemirror/lang-javascript"
 import { cn } from "@/lib/utils"
-import { autocompletion, completionKeymap } from "@codemirror/autocomplete"
+import { autocompletion, completionKeymap, CompletionContext, CompletionResult } from "@codemirror/autocomplete"
 import { html } from "@codemirror/lang-html"
 import { css } from "@codemirror/lang-css"
 import { python } from "@codemirror/lang-python"
@@ -20,8 +20,8 @@ import { sass } from "@codemirror/lang-sass"
 import { less } from "@codemirror/lang-less"
 import { yaml } from "@codemirror/lang-yaml"
 import { indentWithTab } from "@codemirror/commands"
-import { lintKeymap } from "@codemirror/lint"
-import { EditorView, keymap } from "@codemirror/view"
+import { lintKeymap, linter, Diagnostic as CMDiagnostic } from "@codemirror/lint"
+import { EditorView, keymap, hoverTooltip, Tooltip } from "@codemirror/view"
 import { searchKeymap } from "@codemirror/search"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
@@ -30,6 +30,8 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
 import { lineNumbers, highlightActiveLineGutter } from "@codemirror/view"
 import { bracketMatching, foldGutter } from "@codemirror/language"
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete"
+import { useLspStore, CompletionItem as LspCompletionItem, DiagnosticItem } from "@/lib/lsp-store"
+import { invoke } from "@tauri-apps/api/core"
 
 const shadcnTheme = EditorView.theme({
   "&": {
@@ -120,6 +122,29 @@ export interface CodeEditorProps {
   readOnly?: boolean
   onSave?: () => void
   className?: string
+  filePath?: string
+}
+
+// Funkcja mapująca diagnostykę LSP na diagnostykę CodeMirror
+function mapLspDiagnosticsToCM(diagnostics: DiagnosticItem[]): CMDiagnostic[] {
+  return diagnostics.map(diag => ({
+    from: diag.range.start.character,
+    to: diag.range.end.character,
+    severity: diag.severity === 'error' ? 'error' : 
+             diag.severity === 'warning' ? 'warning' : 'info',
+    message: diag.message
+  }));
+}
+
+// Konwertuje pozycję kursora do formatu używanego przez LSP
+function getCursorPosition(view: EditorView) {
+  const pos = view.state.selection.main.head;
+  const line = view.state.doc.lineAt(pos);
+  
+  return {
+    line: line.number - 1, // LSP używa 0-bazowanego indeksowania linii
+    character: pos - line.from // Pozycja znaku w linii
+  };
 }
 
 function getEditorExtensions({
@@ -127,11 +152,13 @@ function getEditorExtensions({
   readOnly,
   onChange,
   onSave,
+  filePath,
 }: {
   language: string;
   readOnly: boolean;
   onChange?: (content: string) => void;
   onSave?: () => void;
+  filePath?: string;
 }) {
   let langExtension;
   switch (language) {
@@ -197,54 +224,130 @@ function getEditorExtensions({
       langExtension = javascript({ typescript: true });
   }
 
+  // LSP wsparcie - funkcja autouzupełniania
+  const lspCompletion = (context: CompletionContext) => {
+    const { state, pos } = context;
+    const line = state.doc.lineAt(pos);
+    const lineStart = line.from;
+    const lineEnd = line.to;
+    const cursorPos = pos - lineStart;
+
+    // Pobierz serwis LSP
+    const { getCompletions, currentFilePath } = useLspStore.getState();
+    
+    // Sprawdź, czy jesteśmy w prawidłowym pliku
+    if (!filePath || filePath !== currentFilePath) {
+      return null;
+    }
+    
+    // Pobierz pozycję kursora w formacie LSP
+    const lspPosition = {
+      line: line.number - 1,
+      character: cursorPos
+    };
+    
+    // Asynchronicznie pobierz podpowiedzi z LSP
+    return getCompletions(filePath, lspPosition).then(completions => {
+      // Konwertuj podpowiedzi LSP na format CodeMirror
+      const cmCompletions = completions.map(item => ({
+        label: item.label,
+        type: item.kind.toLowerCase(),
+        detail: item.detail,
+        info: item.documentation,
+        apply: item.label
+      }));
+      
+      // Pobierz pozycję, od której zaczyna się uzupełnienie
+      const match = context.matchBefore(/[\w\d_\-\.]*/)
+      const from = match ? lineStart + match.from : pos;
+      
+      return {
+        from,
+        options: cmCompletions
+      };
+    });
+  };
+
+  // LSP wsparcie - podpowiedzi podczas najechania myszą
+  const lspHover = hoverTooltip(async (view, pos) => {
+    const { getHoverInfo, currentFilePath } = useLspStore.getState();
+    
+    if (!filePath || filePath !== currentFilePath) {
+      return null;
+    }
+    
+    const line = view.state.doc.lineAt(pos);
+    const lspPosition = {
+      line: line.number - 1,
+      character: pos - line.from
+    };
+    
+    const hoverInfo = await getHoverInfo(filePath, lspPosition);
+    
+    if (!hoverInfo) {
+      return null;
+    }
+    
+    return {
+      pos,
+      create() {
+        const dom = document.createElement('div');
+        dom.textContent = hoverInfo.contents;
+        dom.className = 'cm-lsp-hover';
+        return { dom };
+      }
+    };
+  });
+
+  // LSP wsparcie - diagnostyka (lint)
+  const lspLinter = linter(view => {
+    const { diagnostics, currentFilePath } = useLspStore.getState();
+    
+    if (!filePath || filePath !== currentFilePath) {
+      return [];
+    }
+    
+    return mapLspDiagnosticsToCM(diagnostics);
+  });
+
   return [
+    readOnly ? EditorState.readOnly.of(true) : [],
     lineNumbers(),
     highlightActiveLineGutter(),
     history(),
     foldGutter(),
+    langExtension,
     bracketMatching(),
     closeBrackets(),
-    langExtension,
-    shadcnTheme,
-    syntaxHighlighting(shadcnHighlightStyle),
-    autocompletion(),
-    EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        const newContent = update.state.doc.toString();
-        if (onChange) {
-          onChange(newContent);
-        }
-      }
+    autocompletion({
+      override: [lspCompletion]
     }),
-    EditorView.editable.of(!readOnly),
-    EditorView.domEventHandlers({
-      focus: () => {
-        return false;
-      },
-      blur: () => {
-        return false;
-      },
-      keydown: (event) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-          event.preventDefault();
-          if (onSave) {
-            onSave();
-          }
-          return true;
-        }
-        return false;
-      }
-    }),
+    lspLinter,
+    lspHover,
     keymap.of([
       ...defaultKeymap,
       ...historyKeymap,
       ...completionKeymap,
-      ...searchKeymap,
       ...lintKeymap,
+      ...searchKeymap,
       ...closeBracketsKeymap,
       indentWithTab
-    ])
-  ];
+    ]),
+    syntaxHighlighting(shadcnHighlightStyle),
+    shadcnTheme,
+    onChange ? EditorView.updateListener.of(update => {
+      if (update.docChanged) {
+        onChange(update.state.doc.toString())
+      }
+    }) : [],
+    onSave ? keymap.of([{
+      key: "Mod-s",
+      run: () => {
+        onSave()
+        return true
+      }
+    }]) : [],
+  ]
 }
 
 export function CodeEditor({
@@ -254,183 +357,220 @@ export function CodeEditor({
   readOnly = false,
   onSave,
   className,
+  filePath,
 }: CodeEditorProps) {
-  const prevPropsRef = useRef<CodeEditorProps>({
-    initialValue: "",
-    language: "",
-    readOnly: false,
-  });
+  const editorRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<EditorView | null>(null)
+  const [editorView, setEditorView] = useState<EditorView | null>(null)
+  const [documentVersion, setDocumentVersion] = useState(1)
   
-  const renderCount = useRef(0);
-  renderCount.current += 1;
+  // Hook do inicjalizacji LSP dla aktualnego pliku
+  const { 
+    startLspServer, 
+    isWebSocketRunning, 
+    isServerRunning, 
+    openDocument, 
+    updateDocument, 
+    closeDocument 
+  } = useLspStore();
   
-  const editorViewRef = useRef<EditorView | null>(null);
-  const editorContainerRef = useRef<HTMLDivElement>(null);
-  const initialValueRef = useRef(initialValue);
-  const onChangeRef = useRef(onChange);
-  const onSaveRef = useRef(onSave);
-  const [currentInitialValue, setCurrentInitialValue] = useState(initialValue);
-  const didMountRef = useRef(false);
-  const cleanupStartedRef = useRef(false);
-  
+  // Obsługa aktualizacji pliku i inicjalizacji LSP dla określonego języka
   useEffect(() => {
-    onChangeRef.current = onChange;
-    onSaveRef.current = onSave;
-  }, [onChange, onSave]);
-  
-  useEffect(() => {
-    prevPropsRef.current = {
-      initialValue,
-      language,
-      readOnly,
-      onChange,
-      onSave,
-    };
-  });
-
-  useEffect(() => {
-    if (cleanupStartedRef.current) return;
-    
-    if (initialValue !== currentInitialValue) {
-      setCurrentInitialValue(initialValue);
-      initialValueRef.current = initialValue;
+    if (filePath && language && isWebSocketRunning) {
       
-      if (editorViewRef.current) {
-        const currentContent = editorViewRef.current.state.doc.toString();
-        
-        if (currentContent !== initialValue) {
-          editorViewRef.current.dispatch({
-            changes: {
-              from: 0,
-              to: currentContent.length,
-              insert: initialValue,
-            },
-          });
+      // Użyj funkcji z backendu Rust do znalezienia katalogu głównego projektu
+      const getProjectRoot = async (filePath: string, lang: string): Promise<string> => {
+        try {
+          // Wywołaj funkcję Rust przez API Tauri
+          const rootPath = await invoke('find_project_root', { filePath, language: lang });
+          console.log(`Found project root: ${rootPath} for file: ${filePath}, language: ${lang}`);
+          return rootPath as string;
+        } catch (error) {
+          console.error('Error finding project root:', error);
+          // Fallback: użyj katalogu pliku jako rootPath
+          return filePath.substring(0, filePath.lastIndexOf('/'));
         }
-      }
-    }
-  }, [initialValue, currentInitialValue]);
-
-  useEffect(() => {
-    if (cleanupStartedRef.current) return;
-    
-    if (editorViewRef.current && didMountRef.current) {
-      editorViewRef.current.focus();
-    }
-  }, [editorViewRef.current]);
-
-  useEffect(() => {
-    cleanupStartedRef.current = false;
-    
-    didMountRef.current = true;
-    
-    if (editorContainerRef.current && !editorViewRef.current) {
-      const extensions = getEditorExtensions({
-        language,
-        readOnly,
-        onChange: (content) => {
-          onChangeRef.current?.(content);
-        },
-        onSave: () => {
-          onSaveRef.current?.();
-        },
-      });
-
-      const startState = EditorState.create({
-        doc: initialValue,
-        extensions,
-      });
-
-      const view = new EditorView({
-        state: startState,
-        parent: editorContainerRef.current,
-      });
-
-      editorViewRef.current = view;
-    }
-    
-    return () => {
-      cleanupStartedRef.current = true;
+      };
       
-      if (editorViewRef.current) {
-        editorViewRef.current.destroy();
-        editorViewRef.current = null;
+      // Rozpocznij inicjalizację LSP zgodnie ze standardem protokołu
+      (async () => {
+        try {
+          // Znajdź katalog główny projektu
+          const rootPath = await getProjectRoot(filePath, language);
+          
+          // Jeśli serwer LSP nie jest uruchomiony, zainicjuj go
+          if (!isServerRunning) {
+            await startLspServer(language, rootPath);
+          }
+          
+          // Po inicjalizacji serwera otwórz dokument
+          if (initialValue !== undefined) {
+            await openDocument(filePath, language, initialValue);
+            console.log(`Opened document: ${filePath}`);
+          }
+        } catch (err) {
+          console.error(`Failed to initialize LSP for ${language}:`, err);
+        }
+      })();
+    }
+    
+    // Przy odmontowaniu komponentu zamknij dokument
+    return () => {
+      if (filePath && isServerRunning) {
+        closeDocument(filePath).catch(err => 
+          console.error(`Error closing document ${filePath}:`, err)
+        );
       }
     };
-  }, []);
+  }, [filePath, language, isWebSocketRunning, isServerRunning, startLspServer, openDocument, closeDocument, initialValue]);
   
+  // Nasłuchuj zmian zawartości i powiadamiaj serwer LSP o zmianach
   useEffect(() => {
-    if (cleanupStartedRef.current) return;
-    
-    if (!didMountRef.current || !editorViewRef.current) return;
-    
-    const view = editorViewRef.current;
-    
-    if (prevPropsRef.current.language !== language || 
-        prevPropsRef.current.readOnly !== readOnly) {
+    if (onChange && filePath && isServerRunning) {
+      const handleChange = (content: string) => {
+        setDocumentVersion(version => {
+          const newVersion = version + 1;
+          // Powiadom LSP o zmianie zawartości dokumentu
+          updateDocument(filePath, content, newVersion).catch(err => 
+            console.error(`Error updating document ${filePath}:`, err)
+          );
+          return newVersion;
+        });
+        
+        onChange(content);
+      };
       
-      const newExtensions = getEditorExtensions({
-        language,
-        readOnly,
-        onChange: (content) => {
-          onChangeRef.current?.(content);
-        },
-        onSave: () => {
-          onSaveRef.current?.();
-        },
-      });
-
-      view.dispatch({
-        effects: StateEffect.reconfigure.of(newExtensions),
-      });
+      if (editorView) {
+        const changeListener = EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            handleChange(update.state.doc.toString());
+          }
+        });
+        
+        editorView.dispatch({
+          effects: StateEffect.appendConfig.of(changeListener)
+        });
+        
+        return () => {
+          editorView.dispatch({
+            effects: StateEffect.reconfigure.of([])
+          });
+        };
+      }
     }
-  }, [language, readOnly]);
+  }, [editorView, onChange, filePath, isServerRunning, updateDocument]);
+
+  // Resetuj edytor gdy zmienia się filePath
+  useEffect(() => {
+    if (filePath) {
+      // Zniszcz poprzedni widok edytora i utwórz nowy przy zmianie pliku
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+        setEditorView(null);
+      }
+      
+      if (editorRef.current) {
+        const state = EditorState.create({
+          doc: initialValue,
+          extensions: getEditorExtensions({
+            language,
+            readOnly,
+            onChange,
+            onSave,
+            filePath,
+          }),
+        });
+
+        const view = new EditorView({
+          state,
+          parent: editorRef.current,
+        });
+
+        viewRef.current = view;
+        setEditorView(view);
+      }
+    }
+    
+    // Czyszczenie przy odmontowaniu komponentu
+    return () => {
+      if (viewRef.current) {
+        viewRef.current.destroy();
+        viewRef.current = null;
+      }
+    };
+  }, [filePath, initialValue, language, readOnly, onChange, onSave, editorRef]);
+
+  useEffect(() => {
+    if (viewRef.current) {
+      const currentExtensions = viewRef.current.state.facet(EditorView.contentAttributes)
+      
+      viewRef.current.dispatch({
+        effects: StateEffect.reconfigure.of(getEditorExtensions({
+          language,
+          readOnly,
+          onChange,
+          onSave,
+          filePath,
+        }))
+      })
+    }
+  }, [language, onChange, onSave, readOnly, filePath])
 
   const getLanguageLabel = (lang: string): string => {
-    switch (lang) {
-      case "html": return "HTML";
-      case "css": return "CSS";
-      case "javascript": return "JavaScript";
-      case "typescript": return "TypeScript";
-      case "jsx": return "JSX";
-      case "tsx": return "TypeScript JSX";
-      case "mjs": return "JavaScript Module";
-      case "python": return "Python";
-      case "ruby": return "Ruby";
-      case "php": return "PHP";
-      case "java": return "Java";
-      case "go": return "Go";
-      case "rust": return "Rust";
-      case "c": return "C";
-      case "cpp": return "C++";
-      case "csharp": return "C#";
-      case "json": return "JSON";
-      case "yaml": return "YAML";
-      case "markdown": return "Markdown";
-      case "sql": return "SQL";
-      case "shell": return "Shell";
-      case "xml": return "XML";
-      case "sass": return "Sass";
-      case "less": return "Less";
-      default: return lang.charAt(0).toUpperCase() + lang.slice(1);
+    switch (lang.toLowerCase()) {
+      case "html":
+        return "HTML";
+      case "css":
+        return "CSS";
+      case "javascript":
+        return "JavaScript";
+      case "typescript":
+        return "TypeScript";
+      case "jsx":
+        return "JSX";
+      case "tsx":
+        return "TSX";
+      case "json":
+        return "JSON";
+      case "python":
+        return "Python";
+      case "java":
+        return "Java";
+      case "rust":
+        return "Rust";
+      case "cpp":
+      case "c++":
+        return "C++";
+      case "c":
+        return "C";
+      case "php":
+        return "PHP";
+      case "xml":
+        return "XML";
+      case "markdown":
+      case "md":
+        return "Markdown";
+      case "sql":
+        return "SQL";
+      case "sass":
+        return "SASS";
+      case "less":
+        return "LESS";
+      case "yaml":
+        return "YAML";
+      default:
+        return lang.charAt(0).toUpperCase() + lang.slice(1);
     }
   };
 
   return (
-    <div className={cn("relative w-full h-full", className)}>
-      <div className="absolute inset-0">
-        <ScrollArea className="absolute inset-0 w-full h-full" type="always">
-          <div 
-            ref={editorContainerRef}
-            className="absolute inset-0"
-            data-editor-container
-            style={{ overscrollBehavior: "none" }}
-          />
-          <div className="absolute bottom-2 right-2 px-2.5 py-1 text-xs font-medium bg-primary/5 text-primary/70 rounded-md border border-primary/10 select-none opacity-80 hover:opacity-100 transition-opacity">
-            {getLanguageLabel(language)}
-          </div>
-        </ScrollArea>
-      </div>
+    <div className={cn("relative h-full w-full rounded-md border", className)}>
+      <ScrollArea className="h-full">
+        <div className="min-h-[100px] w-full">
+          <div className="min-h-[100px] w-full" ref={editorRef} />
+        </div>
+      </ScrollArea>
     </div>
   )
 } 

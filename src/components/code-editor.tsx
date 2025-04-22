@@ -517,59 +517,11 @@ export function CodeEditor({
     }
   }, [language, onChange, onSave, readOnly, filePath])
 
-  const getLanguageLabel = (lang: string): string => {
-    switch (lang.toLowerCase()) {
-      case "html":
-        return "HTML";
-      case "css":
-        return "CSS";
-      case "javascript":
-        return "JavaScript";
-      case "typescript":
-        return "TypeScript";
-      case "jsx":
-        return "JSX";
-      case "tsx":
-        return "TSX";
-      case "json":
-        return "JSON";
-      case "python":
-        return "Python";
-      case "java":
-        return "Java";
-      case "rust":
-        return "Rust";
-      case "cpp":
-      case "c++":
-        return "C++";
-      case "c":
-        return "C";
-      case "php":
-        return "PHP";
-      case "xml":
-        return "XML";
-      case "markdown":
-      case "md":
-        return "Markdown";
-      case "sql":
-        return "SQL";
-      case "sass":
-        return "SASS";
-      case "less":
-        return "LESS";
-      case "yaml":
-        return "YAML";
-      default:
-        return lang.charAt(0).toUpperCase() + lang.slice(1);
-    }
-  };
-
   return (
     <div className={cn("relative h-full w-full rounded-md border", className)}>
-      <ScrollArea className="h-full">
-        <div className="min-h-[100px] w-full">
-          <div className="min-h-[100px] w-full" ref={editorRef} />
-        </div>
+      <ScrollArea className="h-full w-full relative">
+      <div className="absolute inset-0" ref={editorRef} />
+
       </ScrollArea>
     </div>
   )

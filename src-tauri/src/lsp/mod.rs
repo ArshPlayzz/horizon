@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 use anyhow::Result;
-
+use serde::{Serialize, Deserialize};
 use server_factory::ServerFactory;
 use websocket::WebSocketManager;
 
@@ -49,6 +49,243 @@ pub async fn start_language_server(language: String, file_path: String) -> Resul
     Server::new(tokio::io::stdin(), tokio::io::stdout(), socket).serve(service).await;
     
     Ok(())
+}
+
+/// Struktura reprezentująca sformatowane dane hover
+#[derive(Serialize, Deserialize)]
+pub struct FormattedHoverData {
+    title: String,
+    signature: Option<String>,
+    documentation: Option<String>,
+    source_code: Option<String>,
+    raw: String,
+}
+
+/// Formatuje dane hover z LSP do bardziej strukturalnej formy
+/// 
+/// Przyjmuje zawartość hover i zwraca ją w ustrukturyzowanej formie z wyodrębnionym tytułem,
+/// sygnaturą, dokumentacją i fragmentem kodu źródłowego (jeśli dostępne).
+#[tauri::command]
+pub fn format_hover_data(contents: String) -> Result<FormattedHoverData, String> {
+    if contents.is_empty() {
+        return Err("Empty hover contents".to_string());
+    }
+    
+    // Domyślne wartości
+    let mut title = "Unknown".to_string();
+    let mut signature = None;
+    let mut documentation = None;
+    let mut source_code = None;
+    
+    // Próbujemy podzielić zawartość według typowych sekcji markdown
+    let lines: Vec<&str> = contents.lines().collect();
+    
+    if !lines.is_empty() {
+        // Pierwsza linia często zawiera nazwę elementu i jego typ
+        title = lines[0].trim().to_string();
+        
+        // Jeśli tytuł zawiera "```" (kod), wyciągnijmy czystą nazwę
+        if title.contains("```") {
+            let parts: Vec<&str> = title.split("```").collect();
+            if parts.len() > 1 {
+                // Bierzemy część po pierwszym znaczniku, ale przed zamykającym (jeśli istnieje)
+                title = parts[1].trim().to_string();
+                
+                // Usuń identyfikator języka, jeśli jest obecny (np. ```rust)
+                let lang_parts: Vec<&str> = title.split_whitespace().collect();
+                if !lang_parts.is_empty() && (lang_parts[0] == "rust" || lang_parts[0] == "ts" || 
+                   lang_parts[0] == "js" || lang_parts[0] == "typescript" || lang_parts[0] == "javascript") {
+                    title = lang_parts[1..].join(" ");
+                }
+            }
+        }
+        
+        // Szukamy bloku kodu (sygnatura, definicja funkcji itp.)
+        let mut in_code_block = false;
+        let mut code_lines = Vec::new();
+        let mut doc_lines = Vec::new();
+        let mut possible_signature_found = false;
+        
+        for line in lines.iter().skip(1) {
+            let line_str = line.trim();
+            
+            // Wykrywanie bloków kodu
+            if line_str.starts_with("```") {
+                in_code_block = !in_code_block;
+                continue;
+            }
+            
+            if in_code_block {
+                // Pomijamy potencjalny identyfikator języka na początku bloku kodu
+                if code_lines.is_empty() && (line_str == "rust" || line_str == "ts" || 
+                   line_str == "js" || line_str == "typescript" || line_str == "javascript") {
+                    continue;
+                }
+                
+                code_lines.push(line_str.to_string());
+            } else if !line_str.is_empty() { 
+                // Sprawdź czy linia wygląda jak odwołanie do funkcji (może być błędnie oznaczona jako dokumentacja)
+                if !possible_signature_found && 
+                   (line_str.contains("fn ") || line_str.contains("pub fn ") || 
+                    line_str.contains("function") || line_str.contains("(") && line_str.contains(")")) {
+                    
+                    // Sprawdźmy czy to naprawdę sygnatura, a nie wzmianka w dokumentacji
+                    let is_likely_signature = line_str.contains("->") || 
+                                             (line_str.contains("(") && line_str.contains(")") && 
+                                              (line_str.contains("fn ") || line_str.contains("function")));
+                    
+                    if is_likely_signature {
+                        if signature.is_none() {
+                            signature = Some(line_str.to_string());
+                            possible_signature_found = true;
+                            continue;
+                        }
+                    }
+                }
+                
+                // Zbieramy niepuste linie jako dokumentację
+                // Sanityzujemy znaki specjalne markdown, które mogą psuć formatowanie
+                let sanitized_line = sanitize_markdown(line_str);
+                doc_lines.push(sanitized_line);
+            }
+        }
+        
+        // Ustawiamy wykryte wartości
+        if !code_lines.is_empty() {
+            // Jeśli nie znaleźliśmy sygnatury wcześniej, pierwsza linia kodu często zawiera sygnaturę
+            if signature.is_none() {
+                signature = Some(code_lines[0].to_string());
+            }
+            
+            // Reszta kodu to źródło
+            if code_lines.len() > 1 {
+                source_code = Some(code_lines.join("\n"));
+            } else if code_lines.len() == 1 && possible_signature_found {
+                // Jeśli mamy tylko jedną linię kodu i wcześniej znaleźliśmy sygnaturę, 
+                // prawdopodobnie to też jest kod źródłowy
+                source_code = Some(code_lines[0].to_string());
+            }
+        }
+        
+        if !doc_lines.is_empty() {
+            documentation = Some(doc_lines.join("\n"));
+        }
+    }
+    
+    // Jeśli tytuł wydaje się zbyt długi lub zawiera nowe linie,
+    // próbujemy wyciągnąć bardziej zwięzłą wersję
+    if title.contains('\n') || title.len() > 100 {
+        // Rozdzielamy na podstawie typowych separatorów
+        let parts: Vec<&str> = title.split(|c| c == ' ' || c == '\n' || c == ':' || c == '-').collect();
+        let short_title = parts.iter()
+            .filter(|&&s| !s.is_empty())  // Filtruję puste części
+            .take(3)                      // Biorę 3 pierwsze części
+            .map(|&s| s.to_string())
+            .collect::<Vec<String>>()
+            .join(" ");
+        
+        if !short_title.is_empty() {
+            title = short_title + "...";
+        }
+    }
+    
+    // Upewnijmy się, że tytuł nie zawiera niechcianych znaczników markdown
+    title = sanitize_markdown(&title);
+    
+    // Jeśli tytuł zawiera tylko "Unknown", ale mamy sygnaturę, wyciągnijmy nazwę z sygnatury
+    if title == "Unknown" && signature.is_some() {
+        if let Some(sig) = &signature {
+            if sig.contains("fn ") {
+                if let Some(fn_part) = sig.split("fn ").nth(1) {
+                    if let Some(name_part) = fn_part.split('(').next() {
+                        title = name_part.trim().to_string();
+                    }
+                }
+            } else if sig.contains("struct ") {
+                if let Some(struct_part) = sig.split("struct ").nth(1) {
+                    if let Some(name_part) = struct_part.split(|c| c == '{' || c == '<' || c == ' ').next() {
+                        title = name_part.trim().to_string();
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(FormattedHoverData {
+        title,
+        signature,
+        documentation,
+        source_code,
+        raw: contents,
+    })
+}
+
+/// Funkcja pomocnicza do czyszczenia tekstu z problematycznych znaczników markdown
+fn sanitize_markdown(text: &str) -> String {
+    let mut result = text.to_string();
+    
+    // Rozwiązanie problemu z nieoczekiwanymi znakami formatowania markdown
+    // Zamieniamy pojedyncze * na ich escaped wersje, ale tylko jeśli nie są częścią ciągu **
+    let mut i = 0;
+    while i < result.len() {
+        if result[i..].starts_with('*') {
+            if i + 1 < result.len() && result[i+1..].starts_with('*') {
+                // To jest "**", pomijamy oba znaki
+                i += 2;
+            } else {
+                // To jest pojedynczy "*", zamieniamy na escaped wersję
+                result.replace_range(i..i+1, "\\*");
+                i += 2; // przesuwamy się o 2, bo dodaliśmy znak "\"
+            }
+        } else {
+            i += 1;
+        }
+    }
+    
+    // Podobnie dla innych problematycznych znaków markdown
+    result = result.replace("_", "\\_")
+                 .replace("##", "\\##")
+                 .replace("###", "\\###");
+    
+    // Zachowaj poprawne formatowanie inline code (tekst w pojedynczych backtickach)
+    // Regex byłby lepszy, ale upraszczamy
+    let mut preserving_code = String::new();
+    let mut inside_code = false;
+    let mut current_segment = String::new();
+    
+    for c in result.chars() {
+        if c == '`' {
+            // Toggle stan (wewnątrz/na zewnątrz kodu)
+            inside_code = !inside_code;
+            
+            // Dodaj backtick do aktualnego segmentu
+            current_segment.push(c);
+            
+            // Jeśli zamknęliśmy kod, dodaj go do wyniku i wyczyść segment
+            if !inside_code {
+                preserving_code.push_str(&current_segment);
+                current_segment.clear();
+            }
+        } else if inside_code {
+            // Wewnątrz kodu zachowujemy wszystkie znaki bez zmian
+            current_segment.push(c);
+        } else {
+            // Poza kodem, dodajemy przetworzone znaki
+            preserving_code.push(c);
+        }
+    }
+    
+    // Obsługa przypadku gdy string kończy się niezamkniętym backtick
+    if !current_segment.is_empty() {
+        preserving_code.push_str(&current_segment);
+    }
+    
+    // Usuwamy ewentualne redundantne znaczniki escape
+    let final_result = preserving_code.replace("\\\\*", "\\*")
+                     .replace("\\\\_", "\\_")
+                     .replace("\\\\#", "\\#");
+                 
+    final_result
 }
 
 /// Tauri command to start an LSP server for a language

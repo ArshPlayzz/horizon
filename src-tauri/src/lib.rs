@@ -64,7 +64,8 @@ pub fn run() {
             lsp::start_lsp_websocket_server,
             lsp::stop_lsp_websocket_server,
             lsp::is_lsp_websocket_running,
-            lsp::find_project_root
+            lsp::find_project_root,
+            lsp::format_hover_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

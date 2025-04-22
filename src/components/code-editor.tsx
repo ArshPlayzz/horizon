@@ -32,6 +32,9 @@ import { bracketMatching, foldGutter } from "@codemirror/language"
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete"
 import { useLspStore, CompletionItem as LspCompletionItem, DiagnosticItem } from "@/lib/lsp-store"
 import { invoke } from "@tauri-apps/api/core"
+import { HoverTooltip } from "./ui/hover-tooltip"
+import { createPortal } from "react-dom"
+import React from "react"
 
 const shadcnTheme = EditorView.theme({
   "&": {
@@ -147,208 +150,62 @@ function getCursorPosition(view: EditorView) {
   };
 }
 
-function getEditorExtensions({
-  language,
-  readOnly,
-  onChange,
-  onSave,
-  filePath,
-}: {
-  language: string;
-  readOnly: boolean;
-  onChange?: (content: string) => void;
-  onSave?: () => void;
-  filePath?: string;
-}) {
-  let langExtension;
-  switch (language) {
-    case "html":
-      langExtension = html();
-      break;
-    case "css":
-      langExtension = css();
-      break;
-    case "javascript":
-      langExtension = javascript();
-      break;
-    case "typescript":
-      langExtension = javascript({ typescript: true });
-      break;
-    case "jsx":
-      langExtension = javascript({ jsx: true });
-      break;
-    case "tsx":
-      langExtension = javascript({ jsx: true, typescript: true });
-      break;
-    case "json":
-      langExtension = json();
-      break;
-    case "python":
-      langExtension = python();
-      break;
-    case "java":
-      langExtension = java();
-      break;
-    case "rust":
-      langExtension = rust();
-      break;
-    case "cpp":
-    case "c++":
-    case "c":
-      langExtension = cpp();
-      break;
-    case "php":
-      langExtension = php();
-      break;
-    case "xml":
-      langExtension = xml();
-      break;
-    case "markdown":
-    case "md":
-      langExtension = markdown();
-      break;
-    case "sql":
-      langExtension = sql();
-      break;
-    case "sass":
-      langExtension = sass();
-      break;
-    case "less":
-      langExtension = less();
-      break;
-    case "yaml":
-      langExtension = yaml();
-      break;
-      
-    default:
-      langExtension = javascript({ typescript: true });
+// LSP wsparcie - funkcja autouzupełniania
+const lspCompletion = (context: CompletionContext) => {
+  const { state, pos } = context;
+  const line = state.doc.lineAt(pos);
+  const lineStart = line.from;
+  const lineEnd = line.to;
+  const cursorPos = pos - lineStart;
+
+  // Pobierz serwis LSP
+  const { getCompletions, currentFilePath } = useLspStore.getState();
+  const filePath = useLspStore.getState().currentFilePath;
+  
+  // Sprawdź, czy jesteśmy w prawidłowym pliku
+  if (!filePath || filePath !== currentFilePath) {
+    return null;
   }
-
-  // LSP wsparcie - funkcja autouzupełniania
-  const lspCompletion = (context: CompletionContext) => {
-    const { state, pos } = context;
-    const line = state.doc.lineAt(pos);
-    const lineStart = line.from;
-    const lineEnd = line.to;
-    const cursorPos = pos - lineStart;
-
-    // Pobierz serwis LSP
-    const { getCompletions, currentFilePath } = useLspStore.getState();
-    
-    // Sprawdź, czy jesteśmy w prawidłowym pliku
-    if (!filePath || filePath !== currentFilePath) {
-      return null;
-    }
-    
-    // Pobierz pozycję kursora w formacie LSP
-    const lspPosition = {
-      line: line.number - 1,
-      character: cursorPos
-    };
-    
-    // Asynchronicznie pobierz podpowiedzi z LSP
-    return getCompletions(filePath, lspPosition).then(completions => {
-      // Konwertuj podpowiedzi LSP na format CodeMirror
-      const cmCompletions = completions.map(item => ({
-        label: item.label,
-        type: item.kind.toLowerCase(),
-        detail: item.detail,
-        info: item.documentation,
-        apply: item.label
-      }));
-      
-      // Pobierz pozycję, od której zaczyna się uzupełnienie
-      const match = context.matchBefore(/[\w\d_\-\.]*/)
-      const from = match ? lineStart + match.from : pos;
-      
-      return {
-        from,
-        options: cmCompletions
-      };
-    });
+  
+  // Pobierz pozycję kursora w formacie LSP
+  const lspPosition = {
+    line: line.number - 1,
+    character: cursorPos
   };
-
-  // LSP wsparcie - podpowiedzi podczas najechania myszą
-  const lspHover = hoverTooltip(async (view, pos) => {
-    const { getHoverInfo, currentFilePath } = useLspStore.getState();
+  
+  // Asynchronicznie pobierz podpowiedzi z LSP
+  return getCompletions(filePath, lspPosition).then(completions => {
+    // Konwertuj podpowiedzi LSP na format CodeMirror
+    const cmCompletions = completions.map(item => ({
+      label: item.label,
+      type: item.kind.toLowerCase(),
+      detail: item.detail,
+      info: item.documentation,
+      apply: item.label
+    }));
     
-    if (!filePath || filePath !== currentFilePath) {
-      return null;
-    }
-    
-    const line = view.state.doc.lineAt(pos);
-    const lspPosition = {
-      line: line.number - 1,
-      character: pos - line.from
-    };
-    
-    const hoverInfo = await getHoverInfo(filePath, lspPosition);
-    
-    if (!hoverInfo) {
-      return null;
-    }
+    // Pobierz pozycję, od której zaczyna się uzupełnienie
+    const match = context.matchBefore(/[\w\d_\-\.]*/)
+    const from = match ? lineStart + match.from : pos;
     
     return {
-      pos,
-      create() {
-        const dom = document.createElement('div');
-        dom.textContent = hoverInfo.contents;
-        dom.className = 'cm-lsp-hover';
-        return { dom };
-      }
+      from,
+      options: cmCompletions
     };
   });
+};
 
-  // LSP wsparcie - diagnostyka (lint)
-  const lspLinter = linter(view => {
-    const { diagnostics, currentFilePath } = useLspStore.getState();
-    
-    if (!filePath || filePath !== currentFilePath) {
-      return [];
-    }
-    
-    return mapLspDiagnosticsToCM(diagnostics);
-  });
-
-  return [
-    readOnly ? EditorState.readOnly.of(true) : [],
-    lineNumbers(),
-    highlightActiveLineGutter(),
-    history(),
-    foldGutter(),
-    langExtension,
-    bracketMatching(),
-    closeBrackets(),
-    autocompletion({
-      override: [lspCompletion]
-    }),
-    lspLinter,
-    lspHover,
-    keymap.of([
-      ...defaultKeymap,
-      ...historyKeymap,
-      ...completionKeymap,
-      ...lintKeymap,
-      ...searchKeymap,
-      ...closeBracketsKeymap,
-      indentWithTab
-    ]),
-    syntaxHighlighting(shadcnHighlightStyle),
-    shadcnTheme,
-    onChange ? EditorView.updateListener.of(update => {
-      if (update.docChanged) {
-        onChange(update.state.doc.toString())
-      }
-    }) : [],
-    onSave ? keymap.of([{
-      key: "Mod-s",
-      run: () => {
-        onSave()
-        return true
-      }
-    }]) : [],
-  ]
-}
+// LSP wsparcie - diagnostyka (lint)
+const lspLinter = linter(view => {
+  const { diagnostics, currentFilePath } = useLspStore.getState();
+  const filePath = useLspStore.getState().currentFilePath;
+  
+  if (!filePath || filePath !== currentFilePath) {
+    return [];
+  }
+  
+  return mapLspDiagnosticsToCM(diagnostics);
+});
 
 export function CodeEditor({
   initialValue,
@@ -363,6 +220,21 @@ export function CodeEditor({
   const viewRef = useRef<EditorView | null>(null)
   const [editorView, setEditorView] = useState<EditorView | null>(null)
   const [documentVersion, setDocumentVersion] = useState(1)
+  
+  // Stan tooltipa hover zintegrowany bezpośrednio w komponencie 
+  const [hoverState, setHoverState] = useState<{
+    data: any;
+    pos: { top: number; left: number };
+    isVisible: boolean;
+  } | null>(null);
+
+  const showHover = (data: any, pos: { top: number; left: number }) => {
+    setHoverState({ data, pos, isVisible: true });
+  };
+
+  const hideHover = () => {
+    setHoverState(null);
+  };
   
   // Hook do inicjalizacji LSP dla aktualnego pliku
   const { 
@@ -460,69 +332,173 @@ export function CodeEditor({
     }
   }, [editorView, onChange, filePath, isServerRunning, updateDocument]);
 
-  // Resetuj edytor gdy zmienia się filePath
-  useEffect(() => {
-    if (filePath) {
-      // Zniszcz poprzedni widok edytora i utwórz nowy przy zmianie pliku
-      if (viewRef.current) {
-        viewRef.current.destroy();
-        viewRef.current = null;
-        setEditorView(null);
+  // Konfiguracja tooltipa hover dla CodeMirror
+  const createLspHover = (view: EditorView, showHoverFn: typeof showHover) => {
+    return hoverTooltip(async (view, pos) => {
+      const { getHoverInfo, currentFilePath } = useLspStore.getState();
+      
+      if (!filePath || filePath !== currentFilePath) {
+        return null;
       }
       
-      if (editorRef.current) {
-        const state = EditorState.create({
-          doc: initialValue,
-          extensions: getEditorExtensions({
-            language,
-            readOnly,
-            onChange,
-            onSave,
-            filePath,
-          }),
-        });
-
-        const view = new EditorView({
-          state,
-          parent: editorRef.current,
-        });
-
-        viewRef.current = view;
-        setEditorView(view);
+      const line = view.state.doc.lineAt(pos);
+      const lspPosition = {
+        line: line.number - 1,
+        character: pos - line.from
+      };
+      
+      const hoverInfo = await getHoverInfo(filePath, lspPosition);
+      
+      if (!hoverInfo) {
+        return null;
       }
+      
+      if (hoverInfo.formattedContents) {
+        const posCoords = view.coordsAtPos(pos);
+        if (posCoords) {
+          // Pokaż custom tooltip
+          setTimeout(() => {
+            showHoverFn(hoverInfo.formattedContents, {
+              top: posCoords.top + 20,
+              left: posCoords.left
+            });
+          }, 0);
+        }
+      }
+      
+      // Zwróć null, aby uniknąć domyślnego tooltipa
+      return null;
+    }, {
+      hideOnChange: true,
+      hoverTime: 300,
+    });
+  };
+
+  // Resetuj edytor gdy zmienia się filePath
+  useEffect(() => {
+    // Ukryj tooltip przy zmianie pliku
+    hideHover();
+    
+    if (!editorRef.current) return;
+    
+    // Zniszcz poprzedni widok edytora
+    if (viewRef.current) {
+      viewRef.current.destroy();
+      viewRef.current = null;
+      setEditorView(null);
     }
     
-    // Czyszczenie przy odmontowaniu komponentu
+    // Utwórz funkcję pomocniczą dla lspHover, która korzysta 
+    // z aktualnych funkcji showHover i hideHover
+    const lspHoverExtension = createLspHover(
+      new EditorView({state: EditorState.create({doc: ""})}), 
+      showHover
+    );
+    
+    // Utwórz nowy state i widok
+    const state = EditorState.create({
+      doc: initialValue,
+      extensions: [
+        readOnly ? EditorState.readOnly.of(true) : [],
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        history(),
+        foldGutter(),
+        getLanguageExtension(language),
+        bracketMatching(),
+        closeBrackets(),
+        autocompletion({
+          override: [lspCompletion]
+        }),
+        lspLinter,
+        lspHoverExtension,
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          ...completionKeymap,
+          ...lintKeymap,
+          ...searchKeymap,
+          ...closeBracketsKeymap,
+          indentWithTab
+        ]),
+        syntaxHighlighting(shadcnHighlightStyle),
+        shadcnTheme,
+        onChange ? EditorView.updateListener.of(update => {
+          if (update.docChanged) {
+            onChange(update.state.doc.toString())
+          }
+        }) : [],
+        onSave ? keymap.of([{
+          key: "Mod-s",
+          run: () => {
+            onSave()
+            return true
+          }
+        }]) : [],
+      ]
+    });
+
+    const view = new EditorView({
+      state,
+      parent: editorRef.current,
+    });
+
+    viewRef.current = view;
+    setEditorView(view);
+    
+    // Cleanup przy odmontowaniu
     return () => {
+      hideHover();
       if (viewRef.current) {
         viewRef.current.destroy();
         viewRef.current = null;
       }
     };
-  }, [filePath, initialValue, language, readOnly, onChange, onSave, editorRef]);
-
-  useEffect(() => {
-    if (viewRef.current) {
-      const currentExtensions = viewRef.current.state.facet(EditorView.contentAttributes)
-      
-      viewRef.current.dispatch({
-        effects: StateEffect.reconfigure.of(getEditorExtensions({
-          language,
-          readOnly,
-          onChange,
-          onSave,
-          filePath,
-        }))
-      })
+  }, [filePath, initialValue, language, readOnly, onChange, onSave]);
+  
+  // Pobierz rozszerzenie języka na podstawie języka
+  function getLanguageExtension(lang: string) {
+    switch (lang) {
+      case "html": return html();
+      case "css": return css();
+      case "javascript": return javascript();
+      case "typescript": return javascript({ typescript: true });
+      case "jsx": return javascript({ jsx: true });
+      case "tsx": return javascript({ jsx: true, typescript: true });
+      case "json": return json();
+      case "python": return python();
+      case "java": return java();
+      case "rust": return rust();
+      case "cpp":
+      case "c++":
+      case "c": return cpp();
+      case "php": return php();
+      case "xml": return xml();
+      case "markdown":
+      case "md": return markdown();
+      case "sql": return sql();
+      case "sass": return sass();
+      case "less": return less();
+      case "yaml": return yaml();
+      default: return javascript({ typescript: true });
     }
-  }, [language, onChange, onSave, readOnly, filePath])
+  }
 
   return (
     <div className={cn("relative h-full w-full rounded-md border", className)}>
-      <ScrollArea className="h-full w-full relative">
-      <div className="absolute inset-0" ref={editorRef} />
-
+      <ScrollArea className="h-full w-full">
+        <div className="relative h-full min-h-[200px]" ref={editorRef} />
       </ScrollArea>
+      
+      {/* Dodajemy portal dla tooltipa hover */}
+      {hoverState?.isVisible && createPortal(
+        <HoverTooltip 
+          data={hoverState.data}
+          position={hoverState.pos}
+          onClose={hideHover}
+        />,
+        document.body
+      )}
     </div>
   )
 } 

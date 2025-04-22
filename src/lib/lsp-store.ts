@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { FormattedHoverData } from "@/components/ui/hover-tooltip";
 
 export type CompletionItem = {
   label: string;
@@ -19,6 +20,7 @@ export type DiagnosticItem = {
 
 export type HoverInfo = {
   contents: string;
+  formattedContents?: FormattedHoverData;
   range?: {
     start: { line: number; character: number };
     end: { line: number; character: number };
@@ -1084,9 +1086,25 @@ export const useLspStore = create<LspState>((set, get) => ({
       });
       
       if (response.type === 'Hover') {
-        return response.payload.contents
-          ? { contents: response.payload.contents }
-          : null;
+        if (!response.payload.contents) {
+          return null;
+        }
+        
+        // Formatuj dane hover za pomocą funkcji Tauri
+        try {
+          const formattedData = await invoke<FormattedHoverData>('format_hover_data', { 
+            contents: response.payload.contents 
+          });
+          
+          return { 
+            contents: response.payload.contents,
+            formattedContents: formattedData
+          };
+        } catch (formattingError) {
+          console.error('Błąd podczas formatowania hover:', formattingError);
+          // Zwróć nieformatowane dane jeśli formatowanie się nie powiodło
+          return { contents: response.payload.contents };
+        }
       } else if (response.type === 'Error') {
         throw new Error(response.payload.message);
       } else {

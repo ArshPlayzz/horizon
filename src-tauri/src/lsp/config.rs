@@ -3,7 +3,6 @@ use anyhow::Result;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
-/// Server capability configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerCapabilities {
     pub hover: bool,
@@ -31,7 +30,6 @@ impl Default for ServerCapabilities {
     }
 }
 
-/// Base configuration for all language servers
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     pub root_path: PathBuf,
@@ -42,7 +40,6 @@ pub struct ServerConfig {
 }
 
 impl ServerConfig {
-    /// Creates a new server configuration
     pub fn new(root_path: &str) -> Result<Self> {
         Ok(Self {
             root_path: PathBuf::from(root_path),
@@ -53,25 +50,21 @@ impl ServerConfig {
         })
     }
     
-    /// Sets the path to the language server executable
     pub fn with_executable(mut self, path: &str) -> Self {
         self.executable_path = Some(PathBuf::from(path));
         self
     }
     
-    /// Adds an argument to pass to the language server
     pub fn with_arg(mut self, arg: &str) -> Self {
         self.additional_args.push(arg.to_string());
         self
     }
     
-    /// Sets an environment variable for the language server process
     pub fn with_env_var(mut self, key: &str, value: &str) -> Self {
         self.env_vars.insert(key.to_string(), value.to_string());
         self
     }
     
-    /// Customizes server capabilities
     pub fn with_capabilities(mut self, capabilities: ServerCapabilities) -> Self {
         self.capabilities = capabilities;
         self

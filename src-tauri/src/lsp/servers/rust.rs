@@ -23,15 +23,11 @@ use crate::lsp::config::ServerConfig;
 use crate::lsp::protocol::{LSPUtils, LspProcessConnection, JsonRpcNotification};
 use crate::lsp::servers::BaseLanguageServer;
 
-/// Structure for storing document data
 struct DocumentData {
-    /// The document contents
     content: String,
-    /// Diagnostics for the document
     diagnostics: Vec<Diagnostic>,
 }
 
-/// Rust language server implementation
 #[derive(Clone)]
 pub struct RustLanguageServer {
     client: Option<Client>,
@@ -46,8 +42,6 @@ pub struct RustLanguageServer {
 
 impl LSPUtils for RustLanguageServer {}
 
-// Explicitly implement Send and Sync for RustLanguageServer
-// This indicates the type can be safely sent between threads
 unsafe impl Send for RustLanguageServer {}
 unsafe impl Sync for RustLanguageServer {}
 
@@ -70,39 +64,31 @@ impl BaseLanguageServer for RustLanguageServer {
         
         let mut command = Command::new(exec_path);
         
-        // Add additional arguments
         for arg in &self.config.additional_args {
             command.arg(arg);
         }
         
-        // Set environment variables
         for (key, value) in &self.config.env_vars {
             command.env(key, value);
         }
         
         println!("Starting rust-analyzer process in root directory: {:?}", self.config.root_path);
         
-        // Set working directory to project root
         command.current_dir(&self.config.root_path);
         
-        // Start the rust-analyzer process
         let mut process = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
         
-        // Create LSP connection with the process
         let connection = LspProcessConnection::new(&mut process)?;
         
-        // Create notification channel
         let (notification_tx, notification_rx) = mpsc::unbounded_channel();
         *self.notification_tx.lock().unwrap() = Some(notification_tx);
         
-        // Start notification handler
         self.start_notification_handling(notification_rx);
         
-        // Store connection and process
         tokio::task::block_in_place(|| {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
@@ -119,7 +105,6 @@ impl BaseLanguageServer for RustLanguageServer {
     
     fn shutdown(&self) -> Result<()> {
         if let Some(mut process) = self.rust_analyzer_process.lock().unwrap().take() {
-            // Send shutdown notification if connection exists
             tokio::task::block_in_place(|| {
                 let rt = tokio::runtime::Handle::current();
                 rt.block_on(async {
@@ -130,11 +115,9 @@ impl BaseLanguageServer for RustLanguageServer {
                 });
             });
             
-            // Terminate process
             process.kill()?;
             *self.is_initialized.lock().unwrap() = false;
             
-            // Clear connection
             tokio::task::block_in_place(|| {
                 let rt = tokio::runtime::Handle::current();
                 rt.block_on(async {
@@ -142,7 +125,6 @@ impl BaseLanguageServer for RustLanguageServer {
                 });
             });
             
-            // Clear notification channel
             *self.notification_tx.lock().unwrap() = None;
         }
         
@@ -155,10 +137,9 @@ impl BaseLanguageServer for RustLanguageServer {
 }
 
 impl RustLanguageServer {
-    /// Creates a new Rust language server
     pub fn new(root_path: String) -> Result<Self> {
         let config = ServerConfig::new(&root_path)?
-            .with_executable("rust-analyzer")  // Find in PATH
+            .with_executable("rust-analyzer")
             .with_env_var("RUST_BACKTRACE", "1");
         
         Ok(Self {
@@ -173,25 +154,21 @@ impl RustLanguageServer {
         })
     }
     
-    /// Set the LSP client
     pub fn with_client(mut self, client: Client) -> Self {
         self.client = Some(client);
         self
     }
     
-    /// Start the notification handling in a separate tokio task
     fn start_notification_handling(&self, mut rx: UnboundedReceiver<JsonRpcNotification>) {
         let server = self.clone();
         
         tokio::spawn(async move {
             while let Some(notification) = rx.recv().await {
-                // Process the notification
                 server.process_notification(notification).await;
             }
         });
     }
     
-    /// Process a notification from the LSP server
     async fn process_notification(&self, notification: JsonRpcNotification) {
         match notification.method.as_str() {
             "textDocument/publishDiagnostics" => {
@@ -201,36 +178,29 @@ impl RustLanguageServer {
                     }
                 }
             },
-            // Add other notification handlers as needed
             _ => {
                 println!("Received unhandled notification: {}", notification.method);
             }
         }
     }
     
-    /// Handle diagnostics from rust-analyzer
     async fn handle_diagnostics(&self, params: PublishDiagnosticsParams) {
         let uri = params.uri.to_string();
-        let diagnostics = params.diagnostics.clone(); // Clone here to avoid the moved value issue
+        let diagnostics = params.diagnostics.clone();
         
-        // Store diagnostics for later use
         let document_data = self.document_data.write().await;
         
-        // Check if document exists and create it if it doesn't
         if !document_data.contains_key(&uri) {
-            // Create new document data with empty content
             document_data.insert(uri.clone(), DocumentData {
                 content: String::new(),
                 diagnostics: diagnostics.clone(),
             });
         } else {
-            // Update existing document data
             if let Some(mut data_ref) = document_data.get_mut(&uri) {
                 data_ref.diagnostics = diagnostics.clone();
             }
         }
         
-        // Forward diagnostics to client if available
         if let Some(client) = &self.client {
             client.publish_diagnostics(params.uri, params.diagnostics, params.version).await;
         }
@@ -238,12 +208,10 @@ impl RustLanguageServer {
         println!("Received {} diagnostics for {}", diagnostics.len(), uri);
     }
     
-    /// Sends an LSP request and waits for response
     async fn send_request<T: serde::Serialize>(&self, method: &str, params: T) -> Result<serde_json::Value> {
-        // Use lock() and then drop it before the await to ensure Send compliance
         let connection = {
             let guard = self.lsp_connection.lock().await;
-            guard.as_ref().cloned() // Clone the connection if it exists
+            guard.as_ref().cloned()
                 .ok_or_else(|| anyhow::anyhow!("No connection to rust-analyzer"))?
         };
         
@@ -258,12 +226,10 @@ impl RustLanguageServer {
         }
     }
     
-    /// Sends an LSP notification
     async fn send_notification<T: serde::Serialize>(&self, method: &str, params: T) -> Result<()> {
-        // Use lock() and then drop it before the await to ensure Send compliance
         let connection = {
             let guard = self.lsp_connection.lock().await;
-            guard.as_ref().cloned() // Clone the connection if it exists
+            guard.as_ref().cloned()
                 .ok_or_else(|| anyhow::anyhow!("No connection to rust-analyzer"))?
         };
         
@@ -274,7 +240,6 @@ impl RustLanguageServer {
 #[async_trait]
 impl LanguageServer for RustLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
-        // First initialize the rust-analyzer process
         if let Err(e) = <Self as BaseLanguageServer>::initialize(self) {
             if let Some(client) = &self.client {
                 let message = format!("Failed to initialize Rust Analyzer process: {}", e);
@@ -283,16 +248,13 @@ impl LanguageServer for RustLanguageServer {
             return Err(tower_lsp::jsonrpc::Error::internal_error());
         }
         
-        // Forward initialize request to rust-analyzer
         match self.send_request("initialize", params).await {
             Ok(result) => {
-                // Parse the result into InitializeResult
                 match serde_json::from_value::<InitializeResult>(result) {
                     Ok(initialize_result) => Ok(initialize_result),
                     Err(e) => {
                         println!("Failed to parse initialize response: {}", e);
                         
-                        // Fallback to default capabilities
                         Ok(InitializeResult {
                             capabilities: ServerCapabilities {
                                 position_encoding: None,
@@ -387,7 +349,6 @@ impl LanguageServer for RustLanguageServer {
         let uri = params.text_document.uri.to_string();
         let text = params.text_document.text.clone();
         
-        // Store document in our collection
         {
             let document_data = self.document_data.write().await;
             document_data.insert(uri.clone(), DocumentData {
@@ -396,10 +357,8 @@ impl LanguageServer for RustLanguageServer {
             });
         }
         
-        // Also store in legacy collection
         self.document_states.insert(uri, text);
         
-        // Send notification to the LSP server
         if let Err(e) = self.send_notification("textDocument/didOpen", params).await {
             println!("Failed to send didOpen notification: {}", e);
         }
@@ -408,19 +367,15 @@ impl LanguageServer for RustLanguageServer {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri.to_string();
         
-        // Apply changes to our document
         if !params.content_changes.is_empty() {
             let last_change = &params.content_changes[params.content_changes.len() - 1];
             let new_text = last_change.text.clone();
             
-            // Update document in our collection
             {
                 let document_data = self.document_data.write().await;
                 
-                // Create the content first
                 let new_content = new_text.clone();
                 
-                // Now update or insert
                 if document_data.contains_key(&uri) {
                     if let Some(mut data) = document_data.get_mut(&uri) {
                         data.content = new_content;
@@ -433,7 +388,6 @@ impl LanguageServer for RustLanguageServer {
                 }
             }
             
-            // Also update legacy collection
             if let Some(mut content) = self.document_states.get_mut(&uri) {
                 *content = new_text.clone();
             } else {
@@ -441,14 +395,12 @@ impl LanguageServer for RustLanguageServer {
             }
         }
         
-        // Send notification to the LSP server
         if let Err(e) = self.send_notification("textDocument/didChange", params).await {
             println!("Failed to send didChange notification: {}", e);
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        // Send notification to the LSP server
         if let Err(e) = self.send_notification("textDocument/didSave", params).await {
             println!("Failed to send didSave notification: {}", e);
         }
@@ -457,7 +409,6 @@ impl LanguageServer for RustLanguageServer {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri.to_string();
         
-        // Clean up our document collections
         {
             let document_data = self.document_data.write().await;
             document_data.remove(&uri);
@@ -465,7 +416,6 @@ impl LanguageServer for RustLanguageServer {
         
         self.document_states.remove(&uri);
         
-        // Send notification to the LSP server
         if let Err(e) = self.send_notification("textDocument/didClose", params).await {
             println!("Failed to send didClose notification: {}", e);
         }
@@ -492,7 +442,6 @@ impl LanguageServer for RustLanguageServer {
     async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
         match self.send_request("textDocument/hover", params).await {
             Ok(result) => {
-                // Handle null result which is valid for hover
                 if result.is_null() {
                     return Ok(None);
                 }
@@ -515,7 +464,6 @@ impl LanguageServer for RustLanguageServer {
     async fn goto_definition(&self, params: GotoDefinitionParams) -> LspResult<Option<GotoDefinitionResponse>> {
         match self.send_request("textDocument/definition", params).await {
             Ok(result) => {
-                // Handle null result
                 if result.is_null() {
                     return Ok(None);
                 }
@@ -538,7 +486,6 @@ impl LanguageServer for RustLanguageServer {
     async fn references(&self, params: ReferenceParams) -> LspResult<Option<Vec<Location>>> {
         match self.send_request("textDocument/references", params).await {
             Ok(result) => {
-                // Handle null result
                 if result.is_null() {
                     return Ok(None);
                 }
@@ -561,7 +508,6 @@ impl LanguageServer for RustLanguageServer {
     async fn formatting(&self, params: DocumentFormattingParams) -> LspResult<Option<Vec<TextEdit>>> {
         match self.send_request("textDocument/formatting", params).await {
             Ok(result) => {
-                // Handle null result
                 if result.is_null() {
                     return Ok(None);
                 }

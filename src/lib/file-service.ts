@@ -103,7 +103,6 @@ export class FileService {
    */
   async openDirectory(): Promise<DirectoryItem[] | null> {
     try {
-      // Open folder selection dialog
       const selected = await open({
         directory: true,
         multiple: false
@@ -119,10 +118,8 @@ export class FileService {
       this.fileContentIndex.clear();
       this.fileSearchIndex.clear();
       
-      // Use native Rust function to scan directory
       try {
         const rustItems = await nativeFs.scanDirectory(dirPath, 0, 2);
-        // Convert the Rust items to our DirectoryItem format
         this.directoryStructure = this.convertRustDirectoryItems(rustItems);
       } catch (error) {
         console.error('Error using native directory scanning, falling back to JS implementation:', error);
@@ -162,14 +159,12 @@ export class FileService {
     try {
       console.log(`Scanning directory: ${dirPath} at depth ${depth}`);
       
-      // Try to use Rust implementation
       try {
         const rustItems = await nativeFs.scanDirectory(dirPath, depth, 2);
         return this.convertRustDirectoryItems(rustItems);
       } catch (error) {
         console.error('Error with Rust directory scanning, falling back to JS:', error);
         
-        // Fallback to JS implementation
         const entries = await readDir(dirPath);
         console.log(`Found ${entries.length} entries in ${dirPath}`);
         const result: DirectoryItem[] = [];
@@ -221,7 +216,6 @@ export class FileService {
    */
   async loadDirectoryContents(dirPath: string): Promise<DirectoryItem[]> {
     try {
-      // Use Rust implementation
       try {
         const rustItems = await nativeFs.scanDirectory(dirPath, 0, 0);
         return this.convertRustDirectoryItems(rustItems);
@@ -245,7 +239,6 @@ export class FileService {
         return null;
       }
       
-      // Use Rust implementation
       try {
         const rustItems = await nativeFs.scanDirectory(this.currentDirectory, 0, 2);
         this.directoryStructure = this.convertRustDirectoryItems(rustItems);
@@ -334,7 +327,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
     let filePath: string | null = null;
     
     if (saveAs || !this.currentFile) {
-      // Open save dialog
       const selected = await save({
         filters: [
           { name: 'Source Code', extensions: ['js', 'jsx', 'ts', 'tsx', 'html', 'css', 'json'] },
@@ -456,7 +448,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
     }
     
     try {
-      // Use the new, more efficient Rust implementation for search
       const results = await nativeFs.searchFileContents(query, this.currentDirectory, maxResults);
       return this.mapNativeFsItems(results);
     } catch (error) {
@@ -486,7 +477,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
     }
     
     try {
-      // Use the advanced Rust implementation
       return await nativeFs.searchFileContentsAdvanced(
         query, 
         this.currentDirectory, 
@@ -508,7 +498,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
    */
   isImageFile(filePath: string): boolean {
     try {
-      // Try Rust implementation synchronously
       const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp'];
       const path = filePath.toLowerCase();
       return extensions.some(ext => path.endsWith(ext));
@@ -527,7 +516,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
    */
   isAudioFile(filePath: string): boolean {
     try {
-      // Try Rust implementation synchronously
       const extensions = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac'];
       const path = filePath.toLowerCase();
       return extensions.some(ext => path.endsWith(ext));
@@ -546,7 +534,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
    */
   async isImageFileAsync(filePath: string): Promise<boolean> {
     try {
-      // Try Rust implementation
       return await nativeFs.isImageFile(filePath);
     } catch (error) {
       console.error('Error with Rust image check, falling back to JS:', error);
@@ -563,7 +550,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
    */
   async isAudioFileAsync(filePath: string): Promise<boolean> {
     try {
-      // Try Rust implementation
       return await nativeFs.isAudioFile(filePath);
     } catch (error) {
       console.error('Error with Rust audio check, falling back to JS:', error);
@@ -585,7 +571,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
     }
     
     try {
-      // Use the new, more efficient Rust implementation for search
       const results = await nativeFs.searchFilesByName(query, this.currentDirectory, maxResults);
       return this.mapNativeFsItems(results);
     } catch (error) {
@@ -613,7 +598,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
     }
     
     try {
-      // Use the advanced Rust implementation
       const results = await nativeFs.searchFilesByNameAdvanced(
         query, 
         this.currentDirectory,
@@ -632,8 +616,6 @@ async saveFile(content: string, saveAs: boolean = false): Promise<FileInfo | nul
    * Stops file indexing in memory as it's now handled by the backend
    */
   private async indexDirectoryContents() {
-    // This method is kept for compatibility but is essentially a no-op now
-    // since indexing and searching is now handled by the backend
     console.log('File indexing is now handled by the backend');
   }
 }

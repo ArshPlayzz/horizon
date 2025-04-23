@@ -48,7 +48,6 @@ export type TextEdit = {
   newText: string;
 };
 
-// LSP text document sync kinds
 enum TextDocumentSyncKind {
   None = 0,
   Full = 1,
@@ -72,13 +71,12 @@ export type LspResponse =
   | { type: 'Formatting', payload: { edits: TextEdit[] } }
   | { type: 'Error', payload: { message: string } };
 
-// Klasa klienta WebSocket do komunikacji z serwerem LSP
 class LspWebSocketClient {
   private socket: WebSocket | null = null;
   private requestCallbacks = new Map<string, (response: any) => void>();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectInterval = 1000; // ms
+  private reconnectInterval = 1000;
   private isConnecting = false;
   private messageQueue: { request: LspRequest, resolve: (value: any) => void, reject: (reason: any) => void }[] = [];
   private connectionPromise: Promise<void> | null = null;
@@ -89,17 +87,14 @@ class LspWebSocketClient {
 
   constructor(private readonly url: string) {}
 
-  // Getter dla serverCapabilities
   getServerCapabilities(): any {
     return this.serverCapabilities;
   }
 
-  // Getter dla serverInfo
   getServerInfo(): any {
     return this.serverInfo;
   }
 
-  // Połącz z serwerem LSP
   async connect(): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
       return Promise.resolve();
@@ -119,7 +114,6 @@ class LspWebSocketClient {
           this.reconnectAttempts = 0;
           this.isConnecting = false;
           
-          // Wyślij zakolejkowane wiadomości
           while (this.messageQueue.length > 0) {
             const { request, resolve, reject } = this.messageQueue.shift()!;
             this.sendRequest(request)
@@ -134,12 +128,10 @@ class LspWebSocketClient {
           try {
             const response = JSON.parse(event.data);
             
-            // Obsłuż odpowiedź
             if (response.error) {
               console.error('LSP Error:', response.error.message);
             }
             
-            // Sprawdź, czy to odpowiedź na żądanie
             if (response.id && this.requestCallbacks.has(response.id.toString())) {
               const callback = this.requestCallbacks.get(response.id.toString());
               this.requestCallbacks.delete(response.id.toString());
@@ -148,18 +140,15 @@ class LspWebSocketClient {
                 callback(response);
               }
             } 
-            // Sprawdź, czy to odpowiedź na initialize
             else if (response.id && response.result && response.result.capabilities) {
               this.serverCapabilities = response.result.capabilities;
               this.serverInfo = response.result.serverInfo;
               console.log('LSP Server initialized with capabilities:', this.serverCapabilities);
               console.log('LSP Server info:', this.serverInfo);
             }
-            // Obsługa powiadomień server-push (bez id)
             else if (!response.id && response.method) {
               console.log(`Otrzymano powiadomienie LSP: ${response.method}`);
               
-              // Special handling for diagnostics notifications
               if (response.method === 'textDocument/publishDiagnostics') {
                 console.log(`Processing diagnostics notification with ${response.params?.diagnostics?.length || 0} items`);
               }
@@ -188,7 +177,6 @@ class LspWebSocketClient {
           console.log(`LSP WebSocket closed: code=${event.code}, reason=${event.reason}`);
           this.socket = null;
           
-          // Jeśli zamknięcie nie było zamierzone, spróbuj ponownie połączyć
           if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
@@ -204,7 +192,6 @@ class LspWebSocketClient {
     return this.connectionPromise;
   }
 
-  // Zainicjuj serwer LSP dla podanego języka i katalogu głównego
   async initializeLanguageServer(language: string, rootPath: string): Promise<any> {
     console.log(`Initializing LSP server for language: ${language}, rootPath: ${rootPath}`);
     
@@ -212,16 +199,14 @@ class LspWebSocketClient {
       await this.connect();
     }
     
-    // Przygotuj żądanie initialize zgodnie ze standardem LSP
     const requestId = this.nextRequestId++;
     const initializeRequest = {
       jsonrpc: "2.0",
       id: requestId,
       method: "initialize",
       params: {
-        processId: null, // W kontekście przeglądarki ustawiamy null
+        processId: null,
         rootUri: `file://${rootPath}`,
-        // Upewnij się, że język jest wyraźnie przekazany w initializationOptions
         initializationOptions: {
           language: language
         },
@@ -262,7 +247,7 @@ class LspWebSocketClient {
             publishDiagnostics: {
               relatedInformation: true,
               tagSupport: {
-                valueSet: [1, 2] // Unnecessary, Deprecated
+                valueSet: [1, 2]
               },
               versionSupport: true,
               codeDescriptionSupport: true,
@@ -289,14 +274,12 @@ class LspWebSocketClient {
       }
     };
     
-    // Wyślij żądanie initialize i czekaj na odpowiedź
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.requestCallbacks.delete(requestId.toString());
         reject(new Error('LSP initialize request timed out'));
       }, 10000);
       
-      // Zapisz callback do obsługi odpowiedzi
       this.requestCallbacks.set(requestId.toString(), (response) => {
         clearTimeout(timeout);
         
@@ -305,12 +288,10 @@ class LspWebSocketClient {
           return;
         }
         
-        // Zapisz możliwości serwera
         if (response.result?.capabilities) {
           this.serverCapabilities = response.result.capabilities;
           this.serverInfo = response.result.serverInfo;
           
-          // Wyślij powiadomienie initialized
           this.sendNotification("initialized", {});
           
           resolve({
@@ -322,7 +303,6 @@ class LspWebSocketClient {
         }
       });
       
-      // Wyślij żądanie
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify(initializeRequest));
       } else {
@@ -333,7 +313,6 @@ class LspWebSocketClient {
     });
   }
   
-  // Powiadom serwer o otwarciu dokumentu
   async notifyDocumentOpened(filePath: string, language: string, content: string): Promise<void> {
     return this.sendNotification("textDocument/didOpen", {
       textDocument: {
@@ -345,7 +324,6 @@ class LspWebSocketClient {
     });
   }
   
-  // Powiadom serwer o zmianie dokumentu
   async notifyDocumentChanged(filePath: string, content: string, version: number): Promise<void> {
     return this.sendNotification("textDocument/didChange", {
       textDocument: {
@@ -358,7 +336,6 @@ class LspWebSocketClient {
     });
   }
   
-  // Powiadom serwer o zamknięciu dokumentu
   async notifyDocumentClosed(filePath: string): Promise<void> {
     return this.sendNotification("textDocument/didClose", {
       textDocument: {
@@ -367,7 +344,6 @@ class LspWebSocketClient {
     });
   }
   
-  // Wyślij powiadomienie LSP (bez oczekiwania na odpowiedź)
   async sendNotification(method: string, params: any): Promise<void> {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       await this.connect();
@@ -386,12 +362,9 @@ class LspWebSocketClient {
     }
   }
 
-  // Wyślij żądanie do serwera LSP
   async sendRequest<T extends LspResponse>(request: LspRequest): Promise<T> {
-    // Połącz z serwerem, jeśli nie jest połączony
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       if (this.isConnecting) {
-        // Dodaj do kolejki, jeśli łączenie jest w toku
         return new Promise<T>((resolve, reject) => {
           this.messageQueue.push({ request, resolve, reject });
         });
@@ -406,10 +379,8 @@ class LspWebSocketClient {
 
     return new Promise<T>((resolve, reject) => {
       try {
-        // Generuj unikalny identyfikator dla tego żądania
         const requestId = this.nextRequestId++;
         
-        // Konwertuj na format JSON-RPC
         const jsonRpcRequest = {
           jsonrpc: "2.0",
           id: requestId,
@@ -417,13 +388,11 @@ class LspWebSocketClient {
           params: this.mapRequestPayloadToParams(request)
         };
         
-        // Ustaw timeout dla żądania
         const timeout = setTimeout(() => {
           this.requestCallbacks.delete(requestId.toString());
           reject(new Error('LSP request timed out'));
         }, 5000);
         
-        // Zapisz callback do obsługi odpowiedzi
         this.requestCallbacks.set(requestId.toString(), (response) => {
           clearTimeout(timeout);
           
@@ -432,12 +401,10 @@ class LspWebSocketClient {
             return;
           }
           
-          // Konwertuj odpowiedź JSON-RPC na format LspResponse
           const lspResponse = this.mapJsonRpcResponseToLspResponse(request.type, response.result);
           resolve(lspResponse as T);
         });
         
-        // Wyślij żądanie
         this.socket?.send(JSON.stringify(jsonRpcRequest));
       } catch (error) {
         reject(error);
@@ -445,7 +412,6 @@ class LspWebSocketClient {
     });
   }
   
-  // Mapuj typ żądania LSP na metodę JSON-RPC
   private mapRequestTypeToMethod(type: LspRequest["type"]): string {
     switch (type) {
       case 'Initialize': return 'initialize';
@@ -458,7 +424,6 @@ class LspWebSocketClient {
     }
   }
   
-  // Mapuj payload żądania LSP na parametry JSON-RPC
   private mapRequestPayloadToParams(request: LspRequest): any {
     if (request.type === 'Initialize') {
       const { language, root_path } = request.payload as any;
@@ -559,12 +524,9 @@ class LspWebSocketClient {
       };
     }
     
-    // Exhaustive check - ta linia nie powinna być nigdy wykonana
-    // jeśli wszystkie typy są obsługiwane
     throw new Error(`Unknown request type: ${(request as any).type}`);
   }
   
-  // Mapuj odpowiedź JSON-RPC na format LspResponse
   private mapJsonRpcResponseToLspResponse(requestType: string, result: any): LspResponse {
     switch (requestType) {
       case 'Initialize':
@@ -635,7 +597,6 @@ class LspWebSocketClient {
     }
   }
   
-  // Pomocnicze metody do mapowania odpowiedzi LSP
   
   private mapCompletionItems(items: any[]): CompletionItem[] {
     return items.map(item => ({
@@ -647,7 +608,6 @@ class LspWebSocketClient {
   }
   
   private mapCompletionItemKind(kind: number): string {
-    // Mapowanie numeryczne LSP na nazwy stringowe
     const kinds: Record<number, string> = {
       1: 'text',
       2: 'method',
@@ -709,7 +669,6 @@ class LspWebSocketClient {
       const uri = location.uri;
       if (!uri) return null;
       
-      // Konwertuj URI file:// na ścieżkę lokalną
       const filePath = uri.startsWith('file://') 
         ? uri.substring(7) 
         : uri;
@@ -749,7 +708,6 @@ class LspWebSocketClient {
     }));
   }
 
-  // Map diagnostic items (used in notification handlers)
   mapDiagnosticItems(items: any[]): DiagnosticItem[] {
     return items.map(item => ({
       message: item.message || 'No message provided',
@@ -767,7 +725,6 @@ class LspWebSocketClient {
     }));
   }
   
-  // Map diagnostic severity (used in notification handlers)
   private mapDiagnosticSeverity(severity: number): 'error' | 'warning' | 'information' | 'hint' {
     switch (severity) {
       case 1: return 'error';
@@ -778,7 +735,6 @@ class LspWebSocketClient {
     }
   }
 
-  // Zamknij połączenie
   disconnectWebSocket() {
     if (this.socket) {
       this.socket.close();
@@ -786,13 +742,11 @@ class LspWebSocketClient {
     }
   }
 
-  // Zarejestruj handler dla powiadomień typu server-push
   registerNotificationHandler(method: string, handler: (params: any) => void): void {
     console.log(`Registering notification handler for ${method}`);
     this.notificationHandlers.set(method, handler);
   }
 
-  // Usuń handler dla powiadomień
   unregisterNotificationHandler(method: string): void {
     console.log(`Unregistering notification handler for ${method}`);
     this.notificationHandlers.delete(method);
@@ -811,7 +765,6 @@ interface LspState {
   isLoading: boolean;
   error: string | null;
   
-  // Actions
   startLspWebSocketServer: (port: number) => Promise<void>;
   stopLspWebSocketServer: () => Promise<void>;
   startLspServer: (language: string, rootPath: string) => Promise<void>;
@@ -843,7 +796,6 @@ export const useLspStore = create<LspState>((set, get) => ({
   startLspWebSocketServer: async (port) => {
     set({ isLoading: true, error: null });
     try {
-      // Najpierw sprawdź, czy serwer jest już uruchomiony
       const isRunning = await invoke<boolean>('is_lsp_websocket_running');
       if (isRunning) {
         console.log(`LSP WebSocket server is already running on port ${port}`);
@@ -853,32 +805,26 @@ export const useLspStore = create<LspState>((set, get) => ({
           isLoading: false
         });
         
-        // Połącz z istniejącym serwerem WebSocket
         await get().connectToWebSocket(`ws://localhost:${port}/lsp`);
         return;
       }
       
-      // Uruchom serwer WebSocket LSP
       console.log(`Starting LSP WebSocket server on port ${port}...`);
       const result = await invoke<string>('start_lsp_websocket_server', { port });
       console.log(`Server response: ${result}`);
       
-      // Sprawdź, czy serwer został uruchomiony lub był już uruchomiony
       if (result.includes('already running') || result.includes('Starting LSP WebSocket server')) {
         set({ 
           isWebSocketRunning: true,
           isLoading: false 
         });
         
-        // Poczekaj chwilę, aby serwer miał czas się uruchomić
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Połącz z serwerem WebSocket
         try {
           await get().connectToWebSocket(`ws://localhost:${port}/lsp`);
         } catch (connectError) {
           console.log(`Failed to connect on port ${port}, trying ${port + 1}...`);
-          // Jeśli połączenie nie powiodło się, spróbuj na następnym porcie
           try {
             await get().connectToWebSocket(`ws://localhost:${port + 1}/lsp`);
           } catch (nextPortError) {
@@ -900,11 +846,9 @@ export const useLspStore = create<LspState>((set, get) => ({
   stopLspWebSocketServer: async () => {
     set({ isLoading: true, error: null });
     
-    // Najpierw zamknij połączenie klienta
     get().disconnectWebSocket();
     
     try {
-      // Zatrzymaj serwer WebSocket LSP
       await invoke('stop_lsp_websocket_server');
       
       set({ 
@@ -923,7 +867,6 @@ export const useLspStore = create<LspState>((set, get) => ({
   startLspServer: async (language: string, rootPath: string) => {
     set({ isLoading: true, error: null });
     try {
-      // Sprawdź czy serwer WebSocket jest uruchomiony
       const { isWebSocketRunning, webSocketClient } = get();
       
       if (!isWebSocketRunning || !webSocketClient) {
@@ -932,7 +875,6 @@ export const useLspStore = create<LspState>((set, get) => ({
       
       console.log(`Starting LSP server for language: ${language}, rootPath: ${rootPath}`);
       
-      // Standardowe wywołanie LSP initialize
       const result = await webSocketClient.initializeLanguageServer(language, rootPath);
       
       console.log('LSP server initialized with result:', result);
@@ -960,7 +902,6 @@ export const useLspStore = create<LspState>((set, get) => ({
       const client = new LspWebSocketClient(url);
       await client.connect();
       
-      // Rejestruj handler dla diagnostyk z serwera LSP
       client.registerNotificationHandler('textDocument/publishDiagnostics', (params) => {
         console.log('Received publishDiagnostics notification', params);
         
@@ -973,12 +914,10 @@ export const useLspStore = create<LspState>((set, get) => ({
           ? params.uri.substring(7) 
           : params.uri;
         
-        // Use the mapDiagnosticItems method from the client
         const diagnosticItems = client.mapDiagnosticItems(params.diagnostics);
         
         console.log(`Processed ${diagnosticItems.length} diagnostics for ${filePath}`);
         
-        // Aktualizuj diagnostyki tylko dla aktualnie otwartego pliku
         const { currentFilePath } = get();
         if (currentFilePath === filePath) {
           set({ diagnostics: diagnosticItems });
@@ -988,7 +927,6 @@ export const useLspStore = create<LspState>((set, get) => ({
         }
       });
       
-      // Rejestruj handler dla wiadomości z serwera LSP
       client.registerNotificationHandler('window/showMessage', (params) => {
         console.log('Received showMessage notification', params);
         
@@ -1004,7 +942,6 @@ export const useLspStore = create<LspState>((set, get) => ({
           })();
           
           console.log(`LSP ${messageType}: ${params.message}`);
-          // You could display these messages in your UI if needed
         }
       });
       
@@ -1034,7 +971,6 @@ export const useLspStore = create<LspState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      // Wyślij żądanie uzupełniania kodu przez WebSocket
       const response = await webSocketClient.sendRequest<LspResponse>({
         type: 'Completion',
         payload: { file_path: filePath, position }
@@ -1065,9 +1001,6 @@ export const useLspStore = create<LspState>((set, get) => ({
       return [];
     }
     
-    // Since diagnostics are pushed by the server via notifications (textDocument/publishDiagnostics)
-    // and stored in state, we simply return the current diagnostics from state
-    // This is because LSP doesn't have a standard "get diagnostics" request method
     return diagnostics;
   },
   
@@ -1079,7 +1012,6 @@ export const useLspStore = create<LspState>((set, get) => ({
     }
     
     try {
-      // Wyślij żądanie hover przez WebSocket
       const response = await webSocketClient.sendRequest<LspResponse>({
         type: 'Hover',
         payload: { file_path: filePath, position }
@@ -1090,7 +1022,6 @@ export const useLspStore = create<LspState>((set, get) => ({
           return null;
         }
         
-        // Formatuj dane hover za pomocą funkcji Tauri
         try {
           const formattedData = await invoke<FormattedHoverData>('format_hover_data', { 
             contents: response.payload.contents 
@@ -1102,7 +1033,6 @@ export const useLspStore = create<LspState>((set, get) => ({
           };
         } catch (formattingError) {
           console.error('Błąd podczas formatowania hover:', formattingError);
-          // Zwróć nieformatowane dane jeśli formatowanie się nie powiodło
           return { contents: response.payload.contents };
         }
       } else if (response.type === 'Error') {
@@ -1124,7 +1054,6 @@ export const useLspStore = create<LspState>((set, get) => ({
     }
     
     try {
-      // Wyślij żądanie definicji przez WebSocket
       const response = await webSocketClient.sendRequest<LspResponse>({
         type: 'Definition',
         payload: { file_path: filePath, position }
@@ -1147,7 +1076,6 @@ export const useLspStore = create<LspState>((set, get) => ({
     set({ 
       currentFilePath: filePath, 
       currentLanguage: language,
-      // Resetuj diagnostyki przy zmianie pliku
       diagnostics: [] 
     });
   },
@@ -1163,8 +1091,6 @@ export const useLspStore = create<LspState>((set, get) => ({
       await webSocketClient.notifyDocumentOpened(filePath, language || currentLanguage || 'plaintext', content);
       set({ currentFilePath: filePath, currentLanguage: language || currentLanguage });
       
-      // Diagnostics will be sent automatically by the server
-      // as textDocument/publishDiagnostics notifications
     } catch (error) {
       console.error('Failed to open document:', error);
       set({ error: `Failed to open document: ${error}` });
@@ -1216,7 +1142,6 @@ export const useLspStore = create<LspState>((set, get) => ({
     }
     
     try {
-      // Sprawdź, czy serwer obsługuje formatowanie
       const serverCapabilities = webSocketClient.getServerCapabilities();
       if (serverCapabilities && 
           !serverCapabilities.documentFormattingProvider) {
@@ -1224,7 +1149,6 @@ export const useLspStore = create<LspState>((set, get) => ({
         return [];
       }
       
-      // Wyślij żądanie formatowania przez WebSocket
       const response = await webSocketClient.sendRequest<LspResponse>({
         type: 'Formatting',
         payload: { file_path: filePath }
@@ -1244,7 +1168,6 @@ export const useLspStore = create<LspState>((set, get) => ({
   }
 }));
 
-// Obsługa zamknięcia aplikacji
 window.addEventListener('beforeunload', () => {
   const { stopLspWebSocketServer, isWebSocketRunning } = useLspStore.getState();
   

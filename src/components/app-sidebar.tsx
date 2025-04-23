@@ -26,7 +26,7 @@ import {
 import { RenameDialog } from "./rename-dialog"
 import { CreateDialog } from "./create-dialog"
 import { FileService } from "@/lib/file-service"
-import { useLspStore, DiagnosticItem } from "@/lib/lsp-store"
+import { useLspStore } from "@/lib/lsp-store"
 import { Badge } from "@/components/ui/badge"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {

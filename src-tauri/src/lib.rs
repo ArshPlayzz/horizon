@@ -1,21 +1,16 @@
-/// Main library module for the code editor application
 pub mod terminal;
 pub mod process_tracker;
 pub mod fs;
 pub mod lsp;
 
-/// Entry point for the Tauri application
-/// 
-/// Initializes the terminal state and sets up the Tauri application with required plugins
-/// and command handlers.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let terminal_state = terminal::init_terminal_state();
 
-    // Inicjalizacja loggera dla diagnostyki
-    tracing_subscriber::fmt::init();
+    lsp::logger::safe_init("./horizon_custom_lsp.log", lsp::logger::LogLevel::Info);
 
     tauri::Builder::default()
+    
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
@@ -26,7 +21,6 @@ pub fn run() {
         .manage(terminal_state)
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Wywołaj czyszczenie przy zamknięciu aplikacji
                 lsp::cleanup_on_exit();
             }
         })

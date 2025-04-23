@@ -296,6 +296,44 @@ export function CodeEditor({
     };
   }, [filePath, language, isWebSocketRunning, isServerRunning, startLspServer, openDocument, closeDocument, initialValue]);
   
+  // Add event listener for navigate-to-position event
+  useEffect(() => {
+    const handleNavigation = (event: CustomEvent<{ line: number; character: number }>) => {
+      if (!viewRef.current) return;
+      
+      const { line, character } = event.detail;
+      
+      // Get document lines
+      const doc = viewRef.current.state.doc;
+      
+      // Calculate position in the document
+      // Go to the specified line (we add 1 since line numbers are 0-based in LSP)
+      const targetLine = Math.min(doc.lines, line + 1);
+      const lineStart = doc.line(targetLine).from;
+      const lineLength = doc.line(targetLine).length;
+      
+      // Calculate the target position
+      const pos = lineStart + Math.min(character, lineLength);
+      
+      // Create a selection at the target position and scroll to it
+      const transaction = viewRef.current.state.update({
+        selection: { anchor: pos, head: pos },
+        scrollIntoView: true
+      });
+      
+      // Apply the transaction
+      viewRef.current.dispatch(transaction);
+    };
+    
+    // Add the event listener
+    window.addEventListener('navigate-to-position', handleNavigation as EventListener);
+    
+    // Clean up the event listener on unmount
+    return () => {
+      window.removeEventListener('navigate-to-position', handleNavigation as EventListener);
+    };
+  }, []);
+
   // Nasłuchuj zmian zawartości i powiadamiaj serwer LSP o zmianach
   useEffect(() => {
     if (onChange && filePath && isServerRunning) {

@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useState, useEffect, useRef } from "react"
-import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconSearch, IconX, IconGitBranch, IconFolder, IconFileText, IconFolderPlus, IconCopy, IconTrash, IconEdit, IconScissors, IconClipboard } from "@tabler/icons-react"
+import { IconChevronRight, IconFile, IconFolderOpen, IconDeviceFloppy, IconDownload, IconSearch, IconX, IconGitBranch, IconFolder, IconFileText, IconFolderPlus, IconCopy, IconTrash, IconEdit, IconScissors, IconClipboard, IconAlertTriangle } from "@tabler/icons-react"
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +26,8 @@ import {
 import { RenameDialog } from "./rename-dialog"
 import { CreateDialog } from "./create-dialog"
 import { FileService } from "@/lib/file-service"
+import { useLspStore, DiagnosticItem } from "@/lib/lsp-store"
+import { Badge } from "@/components/ui/badge"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toggleSidebar } = useSidebar();
@@ -49,6 +51,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     closeCreateDialog
   } = useFileContext();
   
+  // Get diagnostics from LSP store
+  const { diagnostics, currentFilePath } = useLspStore();
+  
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchResults, setSearchResults] = useState<DirectoryItem[]>([]);
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
@@ -56,6 +61,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const searchingIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTab, setActiveTab] = useState<string>("files");
+
+  // Calculate diagnostics summary for badge display
+  const diagnosticSummary = React.useMemo(() => {
+    const errorCount = diagnostics.filter(d => d.severity === 'error').length;
+    const warningCount = diagnostics.filter(d => d.severity === 'warning').length;
+    const infoCount = diagnostics.filter(d => d.severity === 'information' || d.severity === 'hint').length;
+    
+    return {
+      errorCount,
+      warningCount,
+      infoCount,
+      total: errorCount + warningCount + infoCount
+    };
+  }, [diagnostics]);
 
   useEffect(() => {
     const handleToggleSidebar = () => {
@@ -221,6 +240,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <IconSearch className="h-4 w-4" />
             </button>
             <button
+              onClick={() => setActiveTab("diagnostics")}
+              className={`p-2 rounded-md mb-2 cursor-pointer relative ${activeTab === "diagnostics" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+            >
+              <IconAlertTriangle className="h-4 w-4" />
+              {diagnosticSummary.total > 0 && (
+                <Badge 
+                  className="absolute -top-1 -right-1 p-1 h-4 min-w-4 flex items-center justify-center text-xs" 
+                  variant={diagnosticSummary.errorCount > 0 ? "destructive" : diagnosticSummary.warningCount > 0 ? "warning" : "default"}
+                >
+                  {diagnosticSummary.total}
+                </Badge>
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab("git")}
               className={`p-2 rounded-md cursor-pointer ${activeTab === "git" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
             >
@@ -237,9 +270,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       ? `Search` 
                       : (activeTab === "git"
                           ? `Git Integration`
-                          : (isSearchMode 
-                              ? `Results (${searchResults.length})` 
-                              : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')))}
+                          : (activeTab === "diagnostics"
+                              ? `Diagnostics ${diagnosticSummary.total > 0 ? `(${diagnosticSummary.total})` : ''}`
+                              : (isSearchMode 
+                                  ? `Results (${searchResults.length})` 
+                                  : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files'))))}
                   </SidebarGroupLabel>
                   <div className="flex items-center gap-1">
                     {activeTab === "files" && (
@@ -299,6 +334,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           </Tooltip>
                         </TooltipProvider>
                       </>
+                    )}
+                    {activeTab === "diagnostics" && diagnosticSummary.total > 0 && (
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        {diagnosticSummary.errorCount > 0 && (
+                          <div className="flex items-center">
+                            <span className="text-destructive mr-1">{diagnosticSummary.errorCount}</span>
+                            <span>Errors</span>
+                          </div>
+                        )}
+                        {diagnosticSummary.warningCount > 0 && (
+                          <div className="flex items-center ml-2">
+                            <span className="text-warning mr-1">{diagnosticSummary.warningCount}</span>
+                            <span>Warnings</span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -376,6 +427,62 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       ) : (
                         <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
                           <p className="text-xs mt-2">Enter a search term to find files and content</p>
+                        </div>
+                      )}
+                    </SidebarMenu>
+                  </ScrollArea>
+                </SidebarGroupContent>
+              )}
+
+              {activeTab === "diagnostics" && (
+                <SidebarGroupContent className="relative overflow-hidden h-full">
+                  <ScrollArea className="absolute inset-0 w-full h-full" type="auto" scrollHideDelay={400}>
+                    <SidebarMenu>
+                      {!currentFilePath ? (
+                        <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                          <p className="text-xs mt-2">Open a file to view diagnostics</p>
+                        </div>
+                      ) : diagnostics.length > 0 ? (
+                        <div className="p-1">
+                          {diagnostics.map((diagnostic, index) => (
+                            <div 
+                              key={`diagnostic-${index}`} 
+                              className="p-2 mb-1 text-xs rounded-md hover:bg-sidebar-accent/10 cursor-pointer border-l-2 border-l-transparent hover:border-l-sidebar-accent transition-colors"
+                              style={{
+                                borderLeftColor: diagnostic.severity === 'error' 
+                                  ? 'var(--destructive)' 
+                                  : diagnostic.severity === 'warning' 
+                                    ? 'var(--warning)' 
+                                    : 'var(--muted)'
+                              }}
+                            >
+                              <div className="flex items-start gap-2">
+                                <div className="flex-shrink-0 mt-0.5">
+                                  {diagnostic.severity === 'error' ? (
+                                    <IconAlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                                  ) : diagnostic.severity === 'warning' ? (
+                                    <IconAlertTriangle className="h-3.5 w-3.5 text-warning" />
+                                  ) : (
+                                    <IconAlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="flex-grow">
+                                  <div className="font-medium mb-0.5">
+                                    {diagnostic.message}
+                                  </div>
+                                  <div className="text-muted-foreground">
+                                    Line {diagnostic.range.start.line + 1}, Column {diagnostic.range.start.character + 1}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full px-2 text-center text-muted-foreground">
+                          <IconAlertTriangle className="h-10 w-10 mb-2 text-muted-foreground opacity-20" />
+                          <p className="text-sm">No diagnostics found</p>
+                          <p className="text-xs mt-1">The current file has no errors or warnings</p>
                         </div>
                       )}
                     </SidebarMenu>

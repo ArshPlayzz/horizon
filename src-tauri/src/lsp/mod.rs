@@ -244,10 +244,10 @@ pub async fn start_lsp_server(language: String, file_path: String) -> Result<Str
     
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
-        return Err(format!("Podana ścieżka nie istnieje: {}", file_path));
+        return Err(format!("Specified path does not exist: {}", file_path));
     }
     
-    log("start_lsp_server", &format!("Próba uruchomienia serwera LSP dla języka: {}, ścieżka: {}", language, file_path));
+    log("start_lsp_server", &format!("Attempting to start LSP server for language: {}, path: {}", language, file_path));
     
     let mut normalized_language = language.to_lowercase();
     
@@ -260,7 +260,7 @@ pub async fn start_lsp_server(language: String, file_path: String) -> Result<Str
                 "ts" => "typescript".to_string(),
                 _ => normalized_language
             };
-            log("start_lsp_server", &format!("Automatycznie wykryto język: {} na podstawie rozszerzenia pliku", normalized_language));
+            log("start_lsp_server", &format!("Automatically detected language: {} based on file extension", normalized_language));
         }
     }
     
@@ -268,7 +268,7 @@ pub async fn start_lsp_server(language: String, file_path: String) -> Result<Str
     
     if !supported_languages.contains(&normalized_language.as_str()) {
         return Err(format!(
-            "Język '{}' nie jest obsługiwany. Aktualnie obsługiwane języki to: {}",
+            "Language '{}' is not supported. Currently supported languages are: {}",
             normalized_language,
             supported_languages.join(", ")
         ));
@@ -281,7 +281,7 @@ pub async fn start_lsp_server(language: String, file_path: String) -> Result<Str
     };
     
     if is_server_running {
-        log("start_lsp_server", &format!("Serwer LSP dla języka {} już działa, pomijam tworzenie nowego", normalized_language));
+        log("start_lsp_server", &format!("LSP server for language {} is already running, skipping creation of a new one", normalized_language));
         return Ok(format!("LSP server for {} is already running", normalized_language));
     }
     
@@ -324,10 +324,10 @@ pub async fn start_lsp_websocket_server(port: u16) -> Result<String, String> {
     let addr = format!("127.0.0.1:{}", port);
     match std::net::TcpListener::bind(&addr) {
         Ok(_) => {
-            log("start_lsp_websocket_server", &format!("Port {} jest dostępny, uruchamiam serwer WebSocket", port));
+            log("start_lsp_websocket_server", &format!("Port {} is available, starting WebSocket server", port));
         },
         Err(e) => {
-            log("start_lsp_websocket_server", &format!("Port {} jest już zajęty: {}", port, e));
+            log("start_lsp_websocket_server", &format!("Port {} is already in use: {}", port, e));
             
             WS_SERVER_RUNNING.store(true, Ordering::SeqCst);
             
@@ -356,18 +356,18 @@ pub async fn start_lsp_websocket_server(port: u16) -> Result<String, String> {
             for attempt in 0..max_attempts {
                 match ws_manager.start_server(current_port).await {
                     Ok(_) => {
-                        log("start_lsp_websocket_server", &format!("LSP WebSocket server uruchomiony pomyślnie na porcie {}", current_port));
+                        log("start_lsp_websocket_server", &format!("LSP WebSocket server successfully started on port {}", current_port));
                         break;
                     },
                     Err(e) => {
-                        log_error("start_lsp_websocket_server", &format!("Próba {}/{}: Nie można uruchomić serwera WebSocket na porcie {}: {}", 
+                        log_error("start_lsp_websocket_server", &format!("Attempt {}/{}: Cannot start WebSocket server on port {}: {}", 
                             attempt+1, max_attempts, current_port, e));
                             
                         if attempt < max_attempts - 1 {
                             current_port += 1;
-                            log("start_lsp_websocket_server", &format!("Próba użycia portu {}...", current_port));
+                            log("start_lsp_websocket_server", &format!("Trying to use port {}...", current_port));
                         } else {
-                            log_error("start_lsp_websocket_server", &format!("Wyczerpano wszystkie próby uruchomienia serwera WebSocket ({} prób)", max_attempts));
+                            log_error("start_lsp_websocket_server", &format!("All attempts to start WebSocket server exhausted ({} attempts)", max_attempts));
                             WS_SERVER_RUNNING.store(false, Ordering::SeqCst);
                         }
                     }
@@ -449,22 +449,22 @@ pub async fn find_project_root(file_path: String, language: Option<String>) -> R
         
         if !recognized_languages.contains(&lang.to_lowercase().as_str()) {
             return Err(format!(
-                "Język '{}' nie jest rozpoznawany. Aktualnie rozpoznawane języki to: {}",
+                "Can't recognize '{}' Language. Recognized languages: {}",
                 lang,
                 recognized_languages.join(", ")
             ));
         }
     }
     
-    log("find_project_root", &format!("Backend: find_project_root wywołane dla ścieżki: {}, język: {}", file_path, lang));
+    log("find_project_root", &format!("Backend: find_project_root called for path: {}, language: {}", file_path, lang));
     
     match _server_factory.find_project_root(&lang, &file_path) {
         Ok(root_path) => {
-            log("find_project_root", &format!("Backend: znaleziono katalog główny: {}", root_path));
+            log("find_project_root", &format!("Backend: found root directory: {}", root_path));
             Ok(root_path)
         },
         Err(e) => {
-            log("find_project_root", &format!("Backend: błąd znajdowania katalogu głównego: {}", e));
+            log("find_project_root", &format!("Backend: error finding root directory: {}", e));
             Err(format!("Failed to find project root: {}", e))
         }
     }

@@ -155,14 +155,12 @@ export async function writeToFile(path: string, content: string): Promise<void> 
   console.log(`[native-fs] Content type: ${typeof content}, length: ${content.length}`);
   console.log(`[native-fs] Content preview: "${content.substring(0, 50)}..."`);
   
-  // Extra validation to ensure we're passing a valid string
   if (typeof content !== 'string') {
     console.error(`[native-fs] Invalid content type: ${typeof content}`);
     content = String(content);
     console.log(`[native-fs] Converted content length: ${content.length}`);
   }
   
-  // Remove null characters if any
   if (content.includes('\0')) {
     console.warn(`[native-fs] Content contains null characters, cleaning...`);
     content = content.replace(/\0/g, '');

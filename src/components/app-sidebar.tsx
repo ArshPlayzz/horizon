@@ -28,13 +28,13 @@ import { CreateDialog } from "./create-dialog"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { toggleSidebar } = useSidebar();
-  const { 
-    openFile, 
-    openDirectory, 
-    openFileFromPath, 
-    saveFile, 
-    saveFileAs, 
-    directoryStructure, 
+  const {
+    openFile,
+    openDirectory,
+    openFileFromPath,
+    saveFile,
+    saveFileAs,
+    directoryStructure,
     currentDirectory,
     activeFilePath,
     searchFiles,
@@ -47,7 +47,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     handleCreateSubmit,
     closeCreateDialog
   } = useFileContext();
-  
+
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchResults, setSearchResults] = useState<DirectoryItem[]>([]);
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false);
@@ -88,7 +88,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     }
 
     setIsSearchMode(true);
-    
+
     searchDebounceRef.current = setTimeout(() => {
       performSearch(query);
     }, 300);
@@ -96,21 +96,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const performSearch = async (query: string) => {
     if (!query.trim()) return;
-    
+
     if (searchingIndicatorTimeoutRef.current) {
       clearTimeout(searchingIndicatorTimeoutRef.current);
     }
-    
+
     searchingIndicatorTimeoutRef.current = setTimeout(() => {
       setIsSearching(true);
     }, 300);
-    
+
     try {
       const fileNameResults = await searchFiles(query);
       const contentResults = await searchFileContents(query);
-      
+
       const combinedResults = [...fileNameResults];
-      
+
       contentResults.forEach(contentItem => {
         if (!combinedResults.some(item => item.path === contentItem.path)) {
           combinedResults.push({
@@ -119,7 +119,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           });
         }
       });
-      
+
       setSearchResults(combinedResults);
     } catch (error) {
       console.error('Error during search:', error);
@@ -193,7 +193,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           itemType={renameDialog.isDirectory ? 'folder' : 'file'}
         />
       )}
-      
+
       {createDialog.isOpen && (
         <CreateDialog
           isOpen={createDialog.isOpen}
@@ -203,25 +203,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           directoryPath={createDialog.path || ''}
         />
       )}
-      
+
       <SidebarContent className="relative w-full h-full bg-sidebar-background select-none">
         <div className="flex h-full">
           <div className="w-12 bg-sidebar-accent/5 border-r border-sidebar-border/20 flex flex-col items-center py-2">
             <button
               onClick={() => setActiveTab("files")}
-              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "files" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "files" ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50"}`}
             >
               <IconFolder className="h-4 w-4" />
             </button>
             <button
               onClick={() => setActiveTab("search")}
-              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "search" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+              className={`p-2 rounded-md mb-2 cursor-pointer ${activeTab === "search" ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50"}`}
             >
               <IconSearch className="h-4 w-4" />
             </button>
             <button
               onClick={() => setActiveTab("git")}
-              className={`p-2 rounded-md cursor-pointer ${activeTab === "git" ? "bg-sidebar-accent/20" : "hover:bg-sidebar-accent/10"}`}
+              className={`p-2 rounded-md cursor-pointer ${activeTab === "git" ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/50"}`}
             >
               <IconGitBranch className="h-4 w-4" />
             </button>
@@ -232,29 +232,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="flex items-center justify-between px-3 py-2 w-full">
                 <div className="flex w-full justify-between items-center gap-2">
                   <SidebarGroupLabel className="mb-0">
-                    {activeTab === "search" 
-                      ? `Search` 
+                    {activeTab === "search"
+                      ? `Search`
                       : (activeTab === "git"
-                          ? `Git Integration`
-                          : (isSearchMode 
-                              ? `Results (${searchResults.length})` 
-                              : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')))}
+                        ? `Git Integration`
+                        : (isSearchMode
+                          ? `Results (${searchResults.length})`
+                          : (currentDirectory ? `Files (${currentDirectory.split('/').pop() || currentDirectory.split('\\').pop()})` : 'Files')))}
                   </SidebarGroupLabel>
                   <div className="flex items-center gap-1">
                     {activeTab === "files" && (
                       <>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={handleOpenFile}
                           title="Open File"
                           className="h-6 w-6 hover:bg-sidebar-accent/20"
                         >
                           <IconFile className="size-3" />
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={handleOpenDirectory}
                           title="Open Directory"
                           className="h-6 w-6 hover:bg-sidebar-accent/20"
@@ -264,9 +264,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 onClick={handleSaveFile}
                                 disabled={!currentFile}
                                 className="h-6 w-6 hover:bg-sidebar-accent/20 disabled:hover:scale-100"
@@ -282,9 +282,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 onClick={handleSaveAsFile}
                                 disabled={!currentFile}
                                 className="h-6 w-6 hover:bg-sidebar-accent/20 disabled:hover:scale-100"
@@ -311,11 +311,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenu>
                       {directoryStructure ? (
                         directoryStructure.map((item, index) => (
-                          <DirectoryTree 
-                            key={`file-${index}`} 
-                            item={item} 
+                          <DirectoryTree
+                            key={`file-${index}`}
+                            item={item}
                             onFileClick={handleFileClick}
-                            activeFilePath={activeFilePath} 
+                            activeFilePath={activeFilePath}
                           />
                         ))
                       ) : (
@@ -336,15 +336,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         <IconSearch className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <Input
-                        className="pl-8 pr-8 text-xs bg-sidebar-accent/10 border-sidebar-border/20 focus:border-sidebar-border/40" 
+                        className="pl-8 pr-8 text-xs bg-sidebar-accent/10 border-sidebar-border/20 focus:border-sidebar-border/40"
                         placeholder="Search files and content..."
                         value={searchQuery}
                         onChange={handleSearchInputChange}
                       />
                       {searchQuery && (
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                          <button 
-                            className="flex items-center justify-center hover:text-foreground transition-colors" 
+                          <button
+                            className="flex items-center justify-center hover:text-foreground transition-colors"
                             onClick={clearSearch}
                           >
                             <IconX className="h-4 w-4 text-muted-foreground cursor-pointer" />
@@ -361,11 +361,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         </div>
                       ) : searchResults.length > 0 ? (
                         searchResults.map((item, index) => (
-                          <DirectoryTree 
-                            key={`search-${index}`} 
-                            item={item} 
+                          <DirectoryTree
+                            key={`search-${index}`}
+                            item={item}
                             onFileClick={handleFileClick}
-                            activeFilePath={activeFilePath} 
+                            activeFilePath={activeFilePath}
                           />
                         ))
                       ) : searchQuery ? (
@@ -401,14 +401,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   )
 }
 
-function DirectoryTree({ item, onFileClick, activeFilePath }: { 
-  item: DirectoryItem, 
+function DirectoryTree({ item, onFileClick, activeFilePath }: {
+  item: DirectoryItem,
   onFileClick: (path: string) => void,
   activeFilePath: string | null
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number, y: number } | null>(null);
-  const { 
+  const {
     loadDirectoryContents,
     handleCut,
     handleCopy,
@@ -421,16 +421,16 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     handleCreateFolder,
     clipboard
   } = useFileContext();
-  
+
   const hasClipboardContent = clipboard.path !== null && clipboard.type !== null;
-  
+
   // Effect to load contents when expanded
   useEffect(() => {
     if (item.isDirectory && isExpanded && (item.needsLoading || !item.children || item.children.length === 0)) {
       loadDirectoryContents(item.path, item);
     }
   }, [isExpanded, item, loadDirectoryContents]);
-  
+
   const handleClick = () => {
     if (item.isDirectory) {
       setIsExpanded(!isExpanded);
@@ -443,9 +443,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     e.preventDefault();
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
   };
-  
+
   const isActive = activeFilePath === item.path;
-  
+
   const handlePasteInFolder = async () => {
     try {
       if (item.isDirectory) {
@@ -460,25 +460,25 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
     }
     setContextMenuPosition(null);
   };
-  
+
   // Determine loading state
   const isLoading = item.isDirectory && isExpanded && item.needsLoading;
-  
+
   return (
     <div className="pl-1 max-w-[16rem]">
-      <DropdownMenu 
-        open={!!contextMenuPosition} 
+      <DropdownMenu
+        open={!!contextMenuPosition}
         onOpenChange={(open) => {
           if (!open) setContextMenuPosition(null);
         }}
       >
-        <div 
+        <div
           className={`flex flex-row items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-muted ${isActive ? 'bg-muted' : ''}`}
           onClick={handleClick}
           onContextMenu={handleContextMenu}
         >
           {item.isDirectory ? (
-            <IconChevronRight 
+            <IconChevronRight
               className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
             />
           ) : (
@@ -486,10 +486,10 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
           )}
           <span className="truncate text-sm">{item.name}</span>
         </div>
-        
+
         {contextMenuPosition && (
-          <DropdownMenuContent 
-            className="w-56" 
+          <DropdownMenuContent
+            className="w-56"
             style={{
               position: 'absolute',
               left: `${contextMenuPosition.x}px`,
@@ -517,7 +517,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
                 <DropdownMenuSeparator />
               </>
             )}
-            
+
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => {
                 handleCut(item.path);
@@ -540,9 +540,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
                 </DropdownMenuItem>
               )}
             </DropdownMenuGroup>
-            
+
             <DropdownMenuSeparator />
-            
+
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => {
                 handleCopyPath(item.path);
@@ -559,9 +559,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
                 <span>Copy Relative Path</span>
               </DropdownMenuItem>
             </DropdownMenuGroup>
-            
+
             <DropdownMenuSeparator />
-            
+
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={() => {
                 handleRename(item.path);
@@ -570,7 +570,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
                 <IconEdit className="mr-2 h-4 w-4" />
                 <span>Rename</span>
               </DropdownMenuItem>
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onSelect={() => {
                   handleDelete(item.path);
@@ -584,7 +584,7 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
           </DropdownMenuContent>
         )}
       </DropdownMenu>
-      
+
       {item.isDirectory && isExpanded && (
         <div className="pl-3">
           {isLoading ? (
@@ -593,9 +593,9 @@ function DirectoryTree({ item, onFileClick, activeFilePath }: {
             </div>
           ) : item.children && item.children.length > 0 ? (
             item.children.map((child) => (
-              <DirectoryTree 
-                key={child.path} 
-                item={child} 
+              <DirectoryTree
+                key={child.path}
+                item={child}
                 onFileClick={onFileClick}
                 activeFilePath={activeFilePath}
               />

